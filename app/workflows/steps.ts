@@ -14,7 +14,7 @@ import { canStartBatch, killSwitchActive } from '@/lib/caps/enforcement';
 import type { Concept, DesignStyle } from '@/lib/schemas';
 
 const RECRAFT_COST_CENTS = 4;
-const CLAUDE_SVG_COST_CENTS = 1;
+const GEMINI_SVG_COST_CENTS = 0;
 
 export async function loadBatchStep(batchId: string) {
   'use step';
@@ -82,8 +82,8 @@ export async function generateOneDesignStep(designId: string, concept: Concept, 
         mood: concept.mood,
       });
       pngBuffer = await rasterizeSVG(svg);
-      modelUsed = 'claude-svg';
-      costCents = CLAUDE_SVG_COST_CENTS;
+      modelUsed = 'gemini-svg';
+      costCents = GEMINI_SVG_COST_CENTS;
     } else {
       const styledPrompt = concept.style === 'vintage'
         ? `${concept.illustration_prompt}. Vintage 70s-80s retro aesthetic, distressed texture, faux-screenprint, palette: ${concept.palette.join(', ')}. Transparent background.`

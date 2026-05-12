@@ -1,4 +1,4 @@
-import { claudeJSON } from './claude';
+import { geminiJSON } from './gemini';
 import { safetyResultSchema, type SafetyResult } from '../schemas';
 
 export async function checkSafety(input: {
@@ -35,6 +35,6 @@ Return EMPTY flags array if content is clearly safe. Do NOT flag generic terms (
     tags: input.tags,
   });
 
-  const { parsed } = await claudeJSON<unknown>({ system, user });
+  const { parsed } = await geminiJSON<unknown>({ system, user });
   return safetyResultSchema.parse(parsed);
 }

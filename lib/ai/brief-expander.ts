@@ -1,4 +1,4 @@
-import { claudeJSON } from './claude';
+import { geminiJSON } from './gemini';
 import { conceptBatchSchema, type Concept, type DesignStyle } from '../schemas';
 
 export async function expandBrief(opts: {
@@ -45,7 +45,7 @@ Return JSON only.`;
   let lastError: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const { parsed } = await claudeJSON<{ concepts: unknown[] }>({
+      const { parsed } = await geminiJSON<{ concepts: unknown[] }>({
         system: attempt === 0 ? system : `${system}\n\nPREVIOUS ATTEMPT FAILED VALIDATION: ${String(lastError)}\nReturn ONLY valid JSON matching the schema.`,
         user,
       });

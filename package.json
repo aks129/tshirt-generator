@@ -14,8 +14,8 @@
     "db:seed": "tsx --env-file=.env.local lib/db/seed.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.95.2",
     "@base-ui/react": "^1.4.1",
+    "@google/genai": "^2.2.0",
     "@neondatabase/serverless": "^1.1.0",
     "@radix-ui/react-slot": "^1.2.4",
     "@resvg/resvg-js": "^2.6.2",

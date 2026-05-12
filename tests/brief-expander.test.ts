@@ -1,16 +1,17 @@
 import { describe, it, expect, vi } from 'vitest';
 
-vi.mock('@/lib/ai/claude', () => ({
-  claudeJSON: vi.fn(),
-  MODEL: 'claude-sonnet-4-6',
+vi.mock('@/lib/ai/gemini', () => ({
+  geminiJSON: vi.fn(),
+  MODEL: 'gemini-2.5-flash',
+  MODEL_CREATIVE: 'gemini-2.5-pro',
 }));
 
-import { claudeJSON } from '@/lib/ai/claude';
+import { geminiJSON } from '@/lib/ai/gemini';
 import { expandBrief } from '@/lib/ai/brief-expander';
 
 describe('expandBrief', () => {
   it('returns N concepts matching requested styles', async () => {
-    vi.mocked(claudeJSON).mockResolvedValue({
+    vi.mocked(geminiJSON).mockResolvedValue({
       raw: '...',
       parsed: {
         concepts: [
@@ -34,7 +35,7 @@ describe('expandBrief', () => {
   });
 
   it('throws on schema mismatch', async () => {
-    vi.mocked(claudeJSON).mockResolvedValue({
+    vi.mocked(geminiJSON).mockResolvedValue({
       raw: '...',
       parsed: { concepts: [{ style: 'unknown', headline: '', illustration_prompt: '', palette: [], mood: '', niche_keywords: [] }] },
     });

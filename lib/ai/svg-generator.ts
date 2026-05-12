@@ -1,4 +1,4 @@
-import { getClaude, MODEL } from './claude';
+import { geminiText, MODEL_CREATIVE } from './gemini';
 
 const APPROVED_FONTS = [
   'Bebas Neue', 'Anton', 'Oswald', 'Archivo Black',
@@ -33,18 +33,11 @@ Mood: ${opts.mood}
 
 Generate the SVG.`;
 
-  const c = getClaude();
-  const resp = await c.messages.create({
-    model: MODEL,
-    max_tokens: 4096,
-    system,
-    messages: [{ role: 'user', content: user }],
-  });
-  const text = resp.content.filter((b) => b.type === 'text').map((b) => (b as { text: string }).text).join('\n');
+  const text = await geminiText({ system, user, model: MODEL_CREATIVE, maxTokens: 4096 });
   const match = text.match(/```(?:svg|xml)?\s*([\s\S]+?)\s*```/);
   const svg = (match ? match[1] : text).trim();
   if (!svg.startsWith('<svg')) {
-    throw new Error('Claude did not return a valid SVG');
+    throw new Error('Gemini did not return a valid SVG');
   }
   return svg;
 }
