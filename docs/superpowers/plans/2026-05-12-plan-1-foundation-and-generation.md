@@ -137,7 +137,7 @@ Expected: scaffolds Next.js 16 files. Some files may need merging since the repo
 ```bash
 pnpm install
 pnpm add drizzle-orm pg @neondatabase/serverless zod @anthropic-ai/sdk \
-  @vercel/blob @vercel/workflow @resvg/resvg-js sharp \
+  @vercel/blob workflow @resvg/resvg-js sharp \
   jose cookie clsx tailwind-merge class-variance-authority \
   lucide-react @radix-ui/react-slot
 pnpm add -D drizzle-kit @types/pg @types/cookie vitest @vitest/ui \
@@ -1770,15 +1770,30 @@ git commit -m "caps: add daily generation and budget cap enforcement"
 
 ---
 
-## Task 19: Generate-batch workflow (Vercel Workflow)
+## Task 19: Generate-batch workflow (Workflow DevKit)
 
 **Files:**
-- Create: `app/workflows/generate-batch.ts`
+- Modify: `next.config.ts` (wrap with `withWorkflow`)
+- Create: `app/workflows/generate-batch.ts`, `app/workflows/steps.ts`
 
-- [ ] **Step 1: Implement `app/workflows/generate-batch.ts`**
+**Note on API:** This uses the Vercel Workflow DevKit (package name: `workflow`, not `@vercel/workflow`). The API is directive-based — functions opt in with `"use workflow"` or `"use step"` strings as their first line. Step functions have full Node.js access; workflow functions run in a sandbox and should orchestrate via step calls.
+
+- [ ] **Step 1: Wrap `next.config.ts` with `withWorkflow`**
+
+Open `next.config.ts` (created in Task 1). Replace the default export with:
 
 ```ts
-import { defineWorkflow, step } from '@vercel/workflow';
+import type { NextConfig } from "next";
+import { withWorkflow } from "workflow/next";
+
+const nextConfig: NextConfig = {};
+
+export default withWorkflow(nextConfig);
+```
+
+- [ ] **Step 2: Create step functions in `app/workflows/steps.ts`**
+
+```ts
 import { db } from '@/lib/db/client';
 import { batches, designs } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
@@ -1792,67 +1807,54 @@ import { uploadPng } from '@/lib/blob/upload';
 import { composeMockup } from '@/lib/images/mockup';
 import { logEvent } from '@/lib/events';
 import { canStartBatch, killSwitchActive } from '@/lib/caps/enforcement';
-import type { Concept } from '@/lib/schemas';
+import type { Concept, DesignStyle } from '@/lib/schemas';
 
 const RECRAFT_COST_CENTS = 4;
 const CLAUDE_SVG_COST_CENTS = 1;
 
-export const generateBatch = defineWorkflow({
-  name: 'generateBatch',
-  async run(input: { batchId: string }) {
-    const { batchId } = input;
+export async function loadBatchStep(batchId: string) {
+  'use step';
+  const row = await db.query.batches.findFirst({ where: eq(batches.id, batchId) });
+  if (!row) throw new Error(`Batch ${batchId} not found`);
+  return row;
+}
 
-    const batch = await step('load-batch', async () => {
-      const row = await db.query.batches.findFirst({ where: eq(batches.id, batchId) });
-      if (!row) throw new Error(`Batch ${batchId} not found`);
-      return row;
-    });
+export async function checkCapsStep(requestedCount: number) {
+  'use step';
+  return canStartBatch({ requestedCount });
+}
 
-    const caps = await step('check-caps', async () => {
-      const r = await canStartBatch({ requestedCount: batch.requestedCount });
-      return r;
-    });
-    if (!caps.ok) {
-      await db.update(batches).set({ status: 'failed' }).where(eq(batches.id, batchId));
-      await logEvent({ type: 'rejected', batchId, payload: { reason: caps.reason } });
-      return { ok: false, reason: caps.reason };
-    }
+export async function markBatchFailedStep(batchId: string, reason: string) {
+  'use step';
+  await db.update(batches).set({ status: 'failed' }).where(eq(batches.id, batchId));
+  await logEvent({ type: 'rejected', batchId, payload: { reason } });
+}
 
-    const concepts = await step('expand-brief', async () => {
-      return expandBrief({
-        prompt: batch.prompt,
-        styles: batch.styles as Concept['style'][],
-        count: batch.requestedCount,
-      });
-    });
+export async function expandBriefStep(prompt: string, styles: DesignStyle[], count: number): Promise<Concept[]> {
+  'use step';
+  return expandBrief({ prompt, styles, count });
+}
 
-    const designRows = await step('insert-design-rows', async () => {
-      const rows = await db.insert(designs).values(
-        concepts.map((c) => ({
-          batchId,
-          style: c.style,
-          concept: c,
-          status: 'generating' as const,
-        })),
-      ).returning();
-      return rows;
-    });
+export async function insertDesignRowsStep(batchId: string, concepts: Concept[]) {
+  'use step';
+  const rows = await db.insert(designs).values(
+    concepts.map((c) => ({
+      batchId,
+      style: c.style,
+      concept: c,
+      status: 'generating' as const,
+    })),
+  ).returning();
+  return rows;
+}
 
-    const concurrency = 5;
-    for (let i = 0; i < designRows.length; i += concurrency) {
-      const slice = designRows.slice(i, i + concurrency);
-      await Promise.all(slice.map((d) => generateOneDesign(d.id, d.concept as Concept, batchId)));
-    }
+export async function markBatchReadyStep(batchId: string) {
+  'use step';
+  await db.update(batches).set({ status: 'ready' }).where(eq(batches.id, batchId));
+}
 
-    await step('mark-batch-ready', async () => {
-      await db.update(batches).set({ status: 'ready' }).where(eq(batches.id, batchId));
-    });
-
-    return { ok: true, count: designRows.length };
-  },
-});
-
-async function generateOneDesign(designId: string, concept: Concept, batchId: string) {
+export async function generateOneDesignStep(designId: string, concept: Concept, batchId: string) {
+  'use step';
   try {
     if (await killSwitchActive()) {
       await db.update(designs).set({ status: 'failed', failureReason: 'Kill switch active' })
@@ -1860,50 +1862,47 @@ async function generateOneDesign(designId: string, concept: Concept, batchId: st
       return;
     }
 
-    const safety = await step(`safety-${designId}`, async () =>
-      checkSafety({ headline: concept.headline, illustrationPrompt: concept.illustration_prompt }));
+    const safety = await checkSafety({
+      headline: concept.headline,
+      illustrationPrompt: concept.illustration_prompt,
+    });
 
     let pngBuffer: Buffer;
     let modelUsed: string;
     let costCents: number;
 
     if (concept.style === 'typography') {
-      const svg = await step(`svg-${designId}`, async () =>
-        generateTypographySVG({
-          headline: concept.headline, palette: concept.palette, mood: concept.mood,
-        }));
-      pngBuffer = await step(`rasterize-${designId}`, async () => rasterizeSVG(svg));
+      const svg = await generateTypographySVG({
+        headline: concept.headline,
+        palette: concept.palette,
+        mood: concept.mood,
+      });
+      pngBuffer = await rasterizeSVG(svg);
       modelUsed = 'claude-svg';
       costCents = CLAUDE_SVG_COST_CENTS;
     } else {
-      const recraftStyle = concept.style === 'vintage' ? 'digital_illustration' : 'digital_illustration';
       const styledPrompt = concept.style === 'vintage'
         ? `${concept.illustration_prompt}. Vintage 70s-80s retro aesthetic, distressed texture, faux-screenprint, palette: ${concept.palette.join(', ')}. Transparent background.`
         : `${concept.illustration_prompt}. Clean vector illustration, palette: ${concept.palette.join(', ')}. Transparent background.`;
 
-      const url = await step(`recraft-${designId}`, async () => generateImage({
-        prompt: styledPrompt, style: recraftStyle, idempotencyKey: `${batchId}:${designId}`,
-      }));
-      pngBuffer = await step(`download-${designId}`, async () => {
-        const resp = await fetch(url);
-        if (!resp.ok) throw new Error(`Recraft image download failed ${resp.status}`);
-        return Buffer.from(await resp.arrayBuffer());
+      const url = await generateImage({
+        prompt: styledPrompt,
+        style: 'digital_illustration',
+        idempotencyKey: `${batchId}:${designId}`,
       });
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`Recraft image download failed ${resp.status}`);
+      pngBuffer = Buffer.from(await resp.arrayBuffer());
       modelUsed = 'recraft-v3';
       costCents = RECRAFT_COST_CENTS;
     }
 
-    const cleanedPng = await step(`bg-${designId}`, async () => {
-      const hasBg = await detectHasBackground(pngBuffer);
-      return hasBg ? attemptWhiteBgRemoval(pngBuffer) : pngBuffer;
-    });
+    const hasBg = await detectHasBackground(pngBuffer);
+    const cleanedPng = hasBg ? await attemptWhiteBgRemoval(pngBuffer) : pngBuffer;
 
-    const imageUrl = await step(`upload-image-${designId}`, async () =>
-      uploadPng({ buffer: cleanedPng, key: `designs/${designId}.png` }));
-
-    const mockup = await step(`mockup-${designId}`, async () => composeMockup(cleanedPng));
-    const mockupUrl = await step(`upload-mockup-${designId}`, async () =>
-      uploadPng({ buffer: mockup, key: `mockups/${designId}.png` }));
+    const imageUrl = await uploadPng({ buffer: cleanedPng, key: `designs/${designId}.png` });
+    const mockup = await composeMockup(cleanedPng);
+    const mockupUrl = await uploadPng({ buffer: mockup, key: `mockups/${designId}.png` });
 
     await db.update(designs).set({
       imageBlobUrl: imageUrl,
@@ -1928,11 +1927,65 @@ async function generateOneDesign(designId: string, concept: Concept, batchId: st
 }
 ```
 
-- [ ] **Step 2: Commit**
+- [ ] **Step 3: Create the workflow function in `app/workflows/generate-batch.ts`**
+
+```ts
+import {
+  loadBatchStep,
+  checkCapsStep,
+  markBatchFailedStep,
+  expandBriefStep,
+  insertDesignRowsStep,
+  markBatchReadyStep,
+  generateOneDesignStep,
+} from './steps';
+import type { Concept, DesignStyle } from '@/lib/schemas';
+
+export async function generateBatch(batchId: string) {
+  'use workflow';
+
+  const batch = await loadBatchStep(batchId);
+
+  const caps = await checkCapsStep(batch.requestedCount);
+  if (!caps.ok) {
+    await markBatchFailedStep(batchId, caps.reason);
+    return { ok: false, reason: caps.reason };
+  }
+
+  const concepts = await expandBriefStep(
+    batch.prompt,
+    batch.styles as DesignStyle[],
+    batch.requestedCount,
+  );
+
+  const designRows = await insertDesignRowsStep(batchId, concepts);
+
+  const concurrency = 5;
+  for (let i = 0; i < designRows.length; i += concurrency) {
+    const slice = designRows.slice(i, i + concurrency);
+    await Promise.all(slice.map((d) =>
+      generateOneDesignStep(d.id, d.concept as Concept, batchId)
+    ));
+  }
+
+  await markBatchReadyStep(batchId);
+  return { ok: true, count: designRows.length };
+}
+```
+
+- [ ] **Step 4: Verify build passes**
 
 ```bash
-git add app/workflows/
-git commit -m "workflow: add generate-batch durable workflow"
+pnpm build
+```
+
+Expected: build succeeds with no TypeScript errors related to the workflow module.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add next.config.ts app/workflows/
+git commit -m "workflow: add generate-batch using Workflow DevKit directives"
 ```
 
 ---
@@ -1951,7 +2004,7 @@ import { db } from '@/lib/db/client';
 import { batches } from '@/lib/db/schema';
 import { canStartBatch } from '@/lib/caps/enforcement';
 import { designStyleSchema } from '@/lib/schemas';
-import { triggerWorkflow } from '@vercel/workflow';
+import { start } from 'workflow/api';
 import { generateBatch } from '@/app/workflows/generate-batch';
 import { eq } from 'drizzle-orm';
 
@@ -1982,8 +2035,8 @@ export async function POST(req: Request) {
     status: 'generating',
   }).returning();
 
-  const run = await triggerWorkflow(generateBatch, { batchId: row.id });
-  await db.update(batches).set({ workflowRunId: run.id }).where(eq(batches.id, row.id));
+  const run = await start(generateBatch, [row.id]);
+  await db.update(batches).set({ workflowRunId: run.runId }).where(eq(batches.id, row.id));
 
   return NextResponse.json({ ok: true, batchId: row.id });
 }
@@ -2090,7 +2143,7 @@ import { db } from '@/lib/db/client';
 import { designs, batches } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { logEvent } from '@/lib/events';
-import { triggerWorkflow } from '@vercel/workflow';
+import { start } from 'workflow/api';
 import { generateBatch } from '@/app/workflows/generate-batch';
 import type { Concept } from '@/lib/schemas';
 
@@ -2108,8 +2161,8 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     status: 'generating',
   }).returning();
 
-  const run = await triggerWorkflow(generateBatch, { batchId: newBatch.id });
-  await db.update(batches).set({ workflowRunId: run.id }).where(eq(batches.id, newBatch.id));
+  const run = await start(generateBatch, [newBatch.id]);
+  await db.update(batches).set({ workflowRunId: run.runId }).where(eq(batches.id, newBatch.id));
 
   await logEvent({
     type: 'regenerated', designId: id, batchId: original.batchId,
