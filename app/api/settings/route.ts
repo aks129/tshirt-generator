@@ -14,6 +14,8 @@ const bodySchema = z.object({
   dailyPublishCap: z.number().int().min(1),
   dailyBudgetCents: z.number().int().min(0),
   killSwitchActive: z.boolean(),
+  priceOffsetCents: z.number().int().min(0),
+  minPriceFloorCents: z.number().int().min(500),
 });
 
 export async function PUT(req: Request) {
