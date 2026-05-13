@@ -17,6 +17,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const bodySchema = listingCopySchema.extend({
   design_id: z.string().uuid(),
   override_safety: z.boolean().optional(),
+  price_cents: z.number().int().min(1).optional(),
 });
 
 export async function POST(req: Request) {
@@ -28,7 +29,7 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  const { design_id, title, tags, description, override_safety } = parsed.data;
+  const { design_id, title, tags, description, override_safety, price_cents } = parsed.data;
 
   const s = await db.query.settings.findFirst();
   if (!s) return NextResponse.json({ ok: false, error: 'Settings missing' }, { status: 500 });
@@ -70,6 +71,14 @@ export async function POST(req: Request) {
     return NextResponse.json(
       { ok: false, error: 'Design already published or publishing' },
       { status: 409 },
+    );
+  }
+
+  const finalPriceCents = price_cents ?? s.minPriceFloorCents;
+  if (finalPriceCents < s.minPriceFloorCents) {
+    return NextResponse.json(
+      { ok: false, error: `Price below floor ($${(s.minPriceFloorCents / 100).toFixed(2)})` },
+      { status: 422 },
     );
   }
 
@@ -115,6 +124,7 @@ export async function POST(req: Request) {
       title,
       description,
       tags,
+      priceCents: finalPriceCents,
     });
 
     if (result.status === 'live') {

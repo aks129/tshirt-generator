@@ -16,6 +16,7 @@ export async function runPublish(input: {
   title: string;
   description: string;
   tags: string[];
+  priceCents?: number;
   pollIntervalMs?: number;
   pollTimeoutMs?: number;
   preCreatedProductId?: string;
@@ -36,6 +37,7 @@ export async function runPublish(input: {
       title: input.title,
       description: input.description,
       tags: input.tags,
+      priceCents: input.priceCents,
     });
     productId = created.productId;
   }
