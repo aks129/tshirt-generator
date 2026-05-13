@@ -2,11 +2,19 @@ import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db/client';
 import { etsyPriceSamples, type Settings } from '@/lib/db/schema';
 import { buildQuery, queryHash, type ConceptLike } from './build-query';
-import { scrapeEtsySearch } from './search-scraper';
+import { scrapeEtsySearch, type ScrapeResult } from './search-scraper';
+import { erankSearch } from './erank-client';
 import { computeStats, type PriceStats } from './stats';
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const MIN_SAMPLE_COUNT = 5;
+
+function fetchCompetitiveData(query: string): Promise<ScrapeResult> {
+  if (process.env.USE_ERANK === 'true' && process.env.ERANK_API_KEY) {
+    return erankSearch(query);
+  }
+  return scrapeEtsySearch(query);
+}
 
 export type RecommendationSource = 'fresh' | 'cached' | 'stale' | 'unavailable';
 
@@ -58,7 +66,7 @@ export async function recommendPrice(opts: {
   }
 
   // Scrape
-  const scrape = await scrapeEtsySearch(query);
+  const scrape = await fetchCompetitiveData(query);
   const stats = scrape.prices.length >= MIN_SAMPLE_COUNT
     ? computeStats(scrape.prices)
     : null;
