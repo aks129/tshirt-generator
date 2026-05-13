@@ -81,6 +81,8 @@ export const settings = pgTable('settings', {
   etsyShopId: text('etsy_shop_id'),
   killSwitchActive: boolean('kill_switch_active').notNull().default(false),
   printifySetupAt: timestamp('printify_setup_at', { withTimezone: true }),
+  priceOffsetCents: integer('price_offset_cents').notNull().default(100),
+  minPriceFloorCents: integer('min_price_floor_cents').notNull().default(1499),
 });
 
 export const generationEvents = pgTable('generation_events', {
@@ -100,6 +102,23 @@ export const printifyCatalogCache = pgTable('printify_catalog_cache', {
 });
 
 export type PrintifyCatalogCache = typeof printifyCatalogCache.$inferSelect;
+
+export const etsyPriceSamples = pgTable('etsy_price_samples', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  query: text('query').notNull(),
+  queryHash: text('query_hash').notNull().unique(),
+  sampleCount: integer('sample_count').notNull(),
+  minCents: integer('min_cents').notNull(),
+  p25Cents: integer('p25_cents').notNull(),
+  medianCents: integer('median_cents').notNull(),
+  p75Cents: integer('p75_cents').notNull(),
+  maxCents: integer('max_cents').notNull(),
+  rawPrices: jsonb('raw_prices').notNull(),
+  fetchedAt: timestamp('fetched_at', { withTimezone: true }).defaultNow().notNull(),
+  status: text('status').notNull().default('ok'),
+});
+
+export type EtsyPriceSample = typeof etsyPriceSamples.$inferSelect;
 
 export type Batch = typeof batches.$inferSelect;
 export type NewBatch = typeof batches.$inferInsert;
