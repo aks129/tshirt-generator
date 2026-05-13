@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifySession, SESSION_COOKIE } from '@/lib/auth/session';
 
-const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/logout', '/_next', '/favicon.ico', '/.well-known', '/api/cron'];
+const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/logout', '/_next', '/favicon.ico', '/.well-known', '/api/cron', '/api/etsy/oauth/callback'];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
