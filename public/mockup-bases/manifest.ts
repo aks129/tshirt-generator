@@ -19,7 +19,7 @@ export const MOCKUP_BASES: MockupBase[] = [
     file: '/mockup-bases/1.png',
     color: 'white',
     style: 'flat-lay',
-    printArea: { x: 720, y: 580, w: 600, h: 720 },
+    printArea: { x: 360, y: 290, w: 300, h: 360 },
     altText: 'White t-shirt flat lay, top-down view',
   },
   {
@@ -27,7 +27,7 @@ export const MOCKUP_BASES: MockupBase[] = [
     file: '/mockup-bases/2.png',
     color: 'black',
     style: 'flat-lay',
-    printArea: { x: 720, y: 580, w: 600, h: 720 },
+    printArea: { x: 360, y: 290, w: 300, h: 360 },
     altText: 'Black t-shirt flat lay, top-down view',
   },
   {
@@ -35,7 +35,7 @@ export const MOCKUP_BASES: MockupBase[] = [
     file: '/mockup-bases/3.png',
     color: 'white',
     style: 'on-model',
-    printArea: { x: 820, y: 720, w: 400, h: 480 },
+    printArea: { x: 410, y: 360, w: 200, h: 240 },
     altText: 'White t-shirt worn by model in coffee shop',
   },
   {
@@ -43,7 +43,7 @@ export const MOCKUP_BASES: MockupBase[] = [
     file: '/mockup-bases/4.png',
     color: 'black',
     style: 'on-model',
-    printArea: { x: 820, y: 720, w: 400, h: 480 },
+    printArea: { x: 410, y: 360, w: 200, h: 240 },
     altText: 'Black t-shirt worn by model against urban brick',
   },
   {
@@ -51,7 +51,7 @@ export const MOCKUP_BASES: MockupBase[] = [
     file: '/mockup-bases/5.png',
     color: 'white',
     style: 'hanger',
-    printArea: { x: 770, y: 700, w: 520, h: 620 },
+    printArea: { x: 385, y: 350, w: 260, h: 310 },
     altText: 'White t-shirt on wooden hanger',
   },
   {
@@ -59,7 +59,7 @@ export const MOCKUP_BASES: MockupBase[] = [
     file: '/mockup-bases/6.png',
     color: 'heather',
     style: 'folded',
-    printArea: { x: 720, y: 700, w: 600, h: 540 },
+    printArea: { x: 360, y: 350, w: 300, h: 270 },
     altText: 'Heather grey t-shirt folded in stack',
   },
 ];

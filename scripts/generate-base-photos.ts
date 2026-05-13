@@ -54,6 +54,7 @@ async function main() {
       prompt: p.prompt,
       style: 'realistic_image',
       idempotencyKey: `mockup-base-${p.id}`,
+      size: '1024x1024',
     });
     const resp = await fetch(url);
     if (!resp.ok) {
