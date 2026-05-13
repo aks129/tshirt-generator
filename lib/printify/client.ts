@@ -42,7 +42,8 @@ export async function printifyFetch<T>(
   }
   if (!resp.ok) {
     const body = await resp.text().catch(() => '');
-    throw new PrintifyError(resp.status, body, `Printify ${opts.method ?? 'GET'} ${path} failed: ${resp.status}`);
+    const excerpt = body.length > 0 ? ` — ${body.slice(0, 400)}` : '';
+    throw new PrintifyError(resp.status, body, `Printify ${opts.method ?? 'GET'} ${path} failed: ${resp.status}${excerpt}`);
   }
   return (await resp.json()) as T;
 }

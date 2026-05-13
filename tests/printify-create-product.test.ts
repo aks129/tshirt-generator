@@ -42,7 +42,22 @@ describe('createProduct', () => {
       tags: ['coffee', 'funny', 'tee'],
     });
     expect((body.variants as Array<unknown>)).toHaveLength(3);
+    expect((body.variants as Array<{ id: number; price: number; is_enabled: boolean }>)[0])
+      .toEqual({ id: 4011, price: 2499, is_enabled: true });
     expect((body.print_areas as Array<{ placeholders: Array<{ images: Array<{ id: string }> }> }>)[0]
       .placeholders[0].images[0].id).toBe('img_abc');
+  });
+
+  it('uses caller-supplied price when given', async () => {
+    vi.mocked(printifyFetch).mockReset();
+    vi.mocked(printifyFetch).mockResolvedValueOnce({ id: 'prod_xyz' });
+    await createProduct({
+      blueprintId: 6, printProviderId: 99, variantIds: [4011],
+      imageId: 'img_abc', title: 'Test Title', description: 'A test',
+      tags: ['t'], priceCents: 3499,
+    });
+    const [, opts] = vi.mocked(printifyFetch).mock.calls[0];
+    const body = (opts as { body: Record<string, unknown> }).body;
+    expect((body.variants as Array<{ price: number }>)[0].price).toBe(3499);
   });
 });
