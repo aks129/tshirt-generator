@@ -28,7 +28,7 @@ export async function generateBatch(batchId: string) {
 
   const designRows = await insertDesignRowsStep(batchId, concepts);
 
-  const concurrency = 5;
+  const concurrency = 1;
   for (let i = 0; i < designRows.length; i += concurrency) {
     const slice = designRows.slice(i, i + concurrency);
     await Promise.all(slice.map((d) =>
