@@ -24,6 +24,14 @@ export function SettingsForm({ initialSettings }: { initialSettings: Settings | 
   const [killSwitch, setKillSwitch] = useState(initialSettings?.killSwitchActive ?? false);
   const [priceOffsetCents, setPriceOffsetCents] = useState(initialSettings?.priceOffsetCents ?? 100);
   const [minPriceFloorCents, setMinPriceFloorCents] = useState(initialSettings?.minPriceFloorCents ?? 1499);
+  const [etsyShopName, setEtsyShopName] = useState<string | null>(
+    initialSettings?.etsyShopIdOauth ? `shop_id ${initialSettings.etsyShopIdOauth}` : null,
+  );
+  const [etsyExpiresAt, setEtsyExpiresAt] = useState<Date | null>(
+    initialSettings?.etsyTokenExpiresAt ? new Date(initialSettings.etsyTokenExpiresAt) : null,
+  );
+  const [etsyConnecting, setEtsyConnecting] = useState(false);
+  const [etsyDisconnecting, setEtsyDisconnecting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -56,6 +64,35 @@ export function SettingsForm({ initialSettings }: { initialSettings: Settings | 
     if (next.has(id)) next.delete(id);
     else next.add(id);
     setSelectedVariantIds(next);
+  }
+
+  async function connectEtsy() {
+    setEtsyConnecting(true);
+    try {
+      const res = await fetch('/api/etsy/oauth/start', { method: 'POST' });
+      const j = await res.json();
+      if (j.ok && j.redirectUrl) {
+        window.location.href = j.redirectUrl;
+      } else {
+        alert(j.error || 'Failed to start Etsy connection');
+        setEtsyConnecting(false);
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+      setEtsyConnecting(false);
+    }
+  }
+
+  async function disconnectEtsy() {
+    if (!confirm('Disconnect Etsy? Photo uploads will stop working until you reconnect.')) return;
+    setEtsyDisconnecting(true);
+    try {
+      await fetch('/api/etsy/oauth/disconnect', { method: 'POST' });
+      setEtsyShopName(null);
+      setEtsyExpiresAt(null);
+    } finally {
+      setEtsyDisconnecting(false);
+    }
   }
 
   async function save() {
@@ -91,6 +128,42 @@ export function SettingsForm({ initialSettings }: { initialSettings: Settings | 
 
   return (
     <div className="space-y-8">
+      <section className="rounded-xl border border-zinc-200 bg-white p-5">
+        <h2 className="mb-3 text-base font-bold">Etsy connection</h2>
+        {etsyShopName ? (
+          <div className="space-y-2 text-sm">
+            <div>Connected as <strong>{etsyShopName}</strong></div>
+            {etsyExpiresAt && (
+              <div className="text-xs text-zinc-500">
+                Token expires {etsyExpiresAt.toLocaleString()} (auto-refreshed)
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={disconnectEtsy}
+              disabled={etsyDisconnecting}
+              className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-50 disabled:opacity-50"
+            >
+              {etsyDisconnecting ? 'Disconnecting…' : 'Disconnect'}
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <p className="text-sm text-zinc-600">
+              Not connected. Connect Etsy to upload extra mockup photos to your listings automatically.
+            </p>
+            <button
+              type="button"
+              onClick={connectEtsy}
+              disabled={etsyConnecting}
+              className="rounded-md bg-black px-4 py-2 text-sm text-white disabled:opacity-50"
+            >
+              {etsyConnecting ? 'Redirecting…' : 'Connect Etsy shop →'}
+            </button>
+          </div>
+        )}
+      </section>
+
       <section className="rounded-xl border border-zinc-200 bg-white p-5">
         <h2 className="mb-3 text-base font-bold">Printify</h2>
         <div className="space-y-3">
