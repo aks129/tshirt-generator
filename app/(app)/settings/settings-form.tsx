@@ -22,6 +22,8 @@ export function SettingsForm({ initialSettings }: { initialSettings: Settings | 
   const [dailyPublishCap, setDailyPublishCap] = useState(initialSettings?.dailyPublishCap ?? 15);
   const [dailyBudgetCents, setDailyBudgetCents] = useState(initialSettings?.dailyBudgetCents ?? 500);
   const [killSwitch, setKillSwitch] = useState(initialSettings?.killSwitchActive ?? false);
+  const [priceOffsetCents, setPriceOffsetCents] = useState(initialSettings?.priceOffsetCents ?? 100);
+  const [minPriceFloorCents, setMinPriceFloorCents] = useState(initialSettings?.minPriceFloorCents ?? 1499);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -72,6 +74,8 @@ export function SettingsForm({ initialSettings }: { initialSettings: Settings | 
           dailyPublishCap,
           dailyBudgetCents,
           killSwitchActive: killSwitch,
+          priceOffsetCents,
+          minPriceFloorCents,
         }),
       });
       const j = await res.json();
@@ -170,6 +174,8 @@ export function SettingsForm({ initialSettings }: { initialSettings: Settings | 
           <NumberField label="Generation/day" value={dailyGenerationCap} onChange={setDailyGenerationCap} />
           <NumberField label="Publish/day" value={dailyPublishCap} onChange={setDailyPublishCap} />
           <NumberField label="Budget/day (¢)" value={dailyBudgetCents} onChange={setDailyBudgetCents} />
+          <NumberField label="Price offset (¢)" value={priceOffsetCents} onChange={setPriceOffsetCents} />
+          <NumberField label="Min price floor (¢)" value={minPriceFloorCents} onChange={setMinPriceFloorCents} />
         </div>
       </section>
 
