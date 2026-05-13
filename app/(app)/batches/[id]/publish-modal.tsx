@@ -23,12 +23,22 @@ export function PublishModal({
   const [error, setError] = useState<string>('');
   const [safetyFlags, setSafetyFlags] = useState<string[]>([]);
   const [etsyUrl, setEtsyUrl] = useState<string>('');
+  const [priceCents, setPriceCents] = useState<number | null>(null);
+  const [priceRec, setPriceRec] = useState<null | {
+    source: 'fresh' | 'cached' | 'stale' | 'unavailable';
+    sampleCount: number;
+    statistics: { min: number; median: number; max: number } | null;
+    fetchedAt: string | null;
+  }>(null);
+  const [priceFloorCents, setPriceFloorCents] = useState<number>(1499);
+  const [priceRefreshing, setPriceRefreshing] = useState(false);
 
   const concept = design.concept as Concept;
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+
+    async function fetchDraft() {
       try {
         const res = await fetch(`/api/designs/${design.id}/draft-listing`, { method: 'POST' });
         const text = await res.text();
@@ -39,9 +49,7 @@ export function PublishModal({
           return;
         }
         let json: { ok?: boolean; draft?: Draft; error?: string };
-        try {
-          json = JSON.parse(text);
-        } catch {
+        try { json = JSON.parse(text); } catch {
           setError(`Unexpected response (${res.status}): ${text.slice(0, 200)}`);
           setStatus('failed');
           return;
@@ -59,9 +67,51 @@ export function PublishModal({
         setError(err instanceof Error ? err.message : String(err));
         setStatus('failed');
       }
-    })();
+    }
+
+    async function fetchPriceRec(force = false) {
+      try {
+        const qs = force ? '?force=true' : '';
+        const res = await fetch(`/api/designs/${design.id}/price-recommendation${qs}`, { method: 'POST' });
+        const text = await res.text();
+        if (cancelled) return;
+        if (!text) return;
+        let json: { ok?: boolean; recommendedCents?: number; source?: string; sampleCount?: number; statistics?: { min: number; median: number; max: number } | null; fetchedAt?: string | null };
+        try { json = JSON.parse(text); } catch { return; }
+        if (!json.ok || typeof json.recommendedCents !== 'number') return;
+        setPriceCents(json.recommendedCents);
+        setPriceRec({
+          source: (json.source ?? 'unavailable') as 'fresh' | 'cached' | 'stale' | 'unavailable',
+          sampleCount: json.sampleCount ?? 0,
+          statistics: json.statistics ?? null,
+          fetchedAt: json.fetchedAt ?? null,
+        });
+      } catch {
+        /* silent — modal still usable without price rec */
+      }
+    }
+
+    // Pull settings floor for client-side validation
+    fetch('/api/settings/floor').then((r) => r.json()).then((j) => {
+      if (!cancelled && j?.floorCents) setPriceFloorCents(j.floorCents);
+    }).catch(() => {});
+
+    fetchDraft();
+    fetchPriceRec(false);
+
+    // Expose refresh
+    (window as unknown as { __refreshPriceRec?: () => Promise<void> }).__refreshPriceRec = async () => {
+      setPriceRefreshing(true);
+      try {
+        await fetchPriceRec(true);
+      } finally {
+        setPriceRefreshing(false);
+      }
+    };
+
     return () => {
       cancelled = true;
+      delete (window as unknown as { __refreshPriceRec?: () => Promise<void> }).__refreshPriceRec;
     };
   }, [design.id]);
 
@@ -79,6 +129,7 @@ export function PublishModal({
           tags: draft.tags,
           description: draft.description,
           override_safety: override,
+          price_cents: priceCents ?? priceFloorCents,
         }),
       });
       const text = await res.text();
@@ -156,7 +207,8 @@ export function PublishModal({
 
   const titleLen = draft?.title.length ?? 0;
   const tagsValid = draft && draft.tags.length === 13 && draft.tags.every((t) => /^[a-z0-9 ]+$/.test(t) && t.length <= 20);
-  const canPublish = draft && titleLen >= 5 && titleLen <= 140 && tagsValid && draft.description.length >= 20;
+  const priceValid = priceCents !== null && priceCents >= priceFloorCents;
+  const canPublish = !!draft && titleLen >= 5 && titleLen <= 140 && !!tagsValid && draft.description.length >= 20 && priceValid;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -198,6 +250,63 @@ export function PublishModal({
                   onChange={(e) => updateField('description', e.target.value)}
                   aria-label="Listing description"
                 />
+              </Field>
+              <Field label="Price">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">$</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min={priceFloorCents / 100}
+                      className={`w-32 rounded-md border px-3 py-2 text-sm ${
+                        priceCents !== null && priceCents < priceFloorCents
+                          ? 'border-red-500'
+                          : 'border-zinc-300'
+                      }`}
+                      value={priceCents !== null ? (priceCents / 100).toFixed(2) : ''}
+                      onChange={(e) => {
+                        const v = parseFloat(e.target.value);
+                        if (Number.isFinite(v)) setPriceCents(Math.round(v * 100));
+                      }}
+                      aria-label="Price in dollars"
+                    />
+                    <button
+                      type="button"
+                      disabled={priceRefreshing}
+                      onClick={() =>
+                        (window as unknown as { __refreshPriceRec?: () => Promise<void> })
+                          .__refreshPriceRec?.()
+                      }
+                      className="rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-50 disabled:opacity-50"
+                    >
+                      {priceRefreshing ? '…' : '↻ Refresh competitive data'}
+                    </button>
+                  </div>
+                  {priceRec && priceRec.statistics && priceRec.source !== 'unavailable' && (
+                    <p className={
+                      priceRec.source === 'stale'
+                        ? 'text-xs text-amber-700'
+                        : 'text-xs text-zinc-500'
+                    }>
+                      {priceRec.source === 'stale' && '⚠ Stale: '}
+                      Based on {priceRec.sampleCount} t-shirts · median $
+                      {(priceRec.statistics.median / 100).toFixed(2)} · range $
+                      {(priceRec.statistics.min / 100).toFixed(2)}–$
+                      {(priceRec.statistics.max / 100).toFixed(2)}
+                    </p>
+                  )}
+                  {priceRec && priceRec.source === 'unavailable' && (
+                    <p className="text-xs text-amber-700">
+                      ⚠ Couldn't fetch competitive data — using floor price.
+                    </p>
+                  )}
+                  {priceCents !== null && priceCents < priceFloorCents && (
+                    <p className="text-xs text-red-600">
+                      Below floor (${(priceFloorCents / 100).toFixed(2)})
+                    </p>
+                  )}
+                </div>
               </Field>
               {draft.source === 'fallback' && (
                 <p className="rounded bg-amber-50 px-3 py-2 text-xs text-amber-800">
