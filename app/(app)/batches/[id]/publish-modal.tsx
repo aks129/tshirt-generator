@@ -31,9 +31,22 @@ export function PublishModal({
     (async () => {
       try {
         const res = await fetch(`/api/designs/${design.id}/draft-listing`, { method: 'POST' });
-        const json = await res.json();
+        const text = await res.text();
         if (cancelled) return;
-        if (!res.ok || !json.ok) {
+        if (!text) {
+          setError(`Server returned empty response (${res.status}). The draft request may have timed out — try again.`);
+          setStatus('failed');
+          return;
+        }
+        let json: { ok?: boolean; draft?: Draft; error?: string };
+        try {
+          json = JSON.parse(text);
+        } catch {
+          setError(`Unexpected response (${res.status}): ${text.slice(0, 200)}`);
+          setStatus('failed');
+          return;
+        }
+        if (!res.ok || !json.ok || !json.draft) {
           setError(json.error || 'Failed to draft listing');
           setStatus('failed');
           return;
@@ -68,7 +81,29 @@ export function PublishModal({
           override_safety: override,
         }),
       });
-      const json = await res.json();
+      const text = await res.text();
+      if (!text) {
+        setError(
+          `Server timed out (${res.status}). Publish may still be running — check /listings in 1–2 minutes.`,
+        );
+        setStatus('slow');
+        return;
+      }
+      let json: {
+        ok?: boolean;
+        flags?: string[];
+        error?: string;
+        status?: string;
+        etsyUrl?: string;
+        listingId?: string;
+      };
+      try {
+        json = JSON.parse(text);
+      } catch {
+        setError(`Unexpected response (${res.status}): ${text.slice(0, 200)}`);
+        setStatus('failed');
+        return;
+      }
       if (res.status === 422 && json.flags) {
         setSafetyFlags(json.flags);
         setStatus('blocked');
@@ -85,7 +120,7 @@ export function PublishModal({
         onPublished();
         return;
       }
-      if (json.status === 'publishing_slow') {
+      if (json.status === 'publishing_slow' && json.listingId) {
         setStatus('slow');
         pollListing(json.listingId);
         return;

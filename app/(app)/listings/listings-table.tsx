@@ -35,8 +35,17 @@ export function ListingsTable({ rows }: { rows: Row[] }) {
     setRetryingId(id);
     try {
       const res = await fetch(`/api/listings/${id}/retry`, { method: 'POST' });
-      const j = await res.json();
-      if (!res.ok && !j.ok) alert(j.error || 'Retry failed');
+      const text = await res.text();
+      if (!text) {
+        alert('Retry is still running on the server. Refreshing to check current state.');
+      } else {
+        try {
+          const j = JSON.parse(text);
+          if (!res.ok && !j.ok) alert(j.error || 'Retry failed');
+        } catch {
+          alert(`Unexpected response from server (${res.status}). Refreshing.`);
+        }
+      }
       window.location.reload();
     } finally {
       setRetryingId(null);
