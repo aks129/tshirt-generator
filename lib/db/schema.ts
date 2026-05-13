@@ -58,6 +58,7 @@ export const listings = pgTable('listings', {
   publishedAt: timestamp('published_at', { withTimezone: true }),
   failureReason: text('failure_reason'),
   safetyBlocked: boolean('safety_blocked').notNull().default(false),
+  editedByUser: boolean('edited_by_user').notNull().default(false),
 });
 
 export const nicheLibrary = pgTable('niche_library', {
@@ -79,6 +80,7 @@ export const settings = pgTable('settings', {
   defaultVariants: jsonb('default_variants'),
   etsyShopId: text('etsy_shop_id'),
   killSwitchActive: boolean('kill_switch_active').notNull().default(false),
+  printifySetupAt: timestamp('printify_setup_at', { withTimezone: true }),
 });
 
 export const generationEvents = pgTable('generation_events', {
@@ -89,6 +91,15 @@ export const generationEvents = pgTable('generation_events', {
   payload: jsonb('payload').notNull().default({}),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
+
+export const printifyCatalogCache = pgTable('printify_catalog_cache', {
+  id: integer('id').primaryKey().default(1),
+  blueprints: jsonb('blueprints').notNull(),
+  providers: jsonb('providers').notNull(),
+  fetchedAt: timestamp('fetched_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export type PrintifyCatalogCache = typeof printifyCatalogCache.$inferSelect;
 
 export type Batch = typeof batches.$inferSelect;
 export type NewBatch = typeof batches.$inferInsert;
