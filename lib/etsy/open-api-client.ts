@@ -2,24 +2,26 @@
 //
 // Etsy's public listing search lives at:
 //   GET /v3/application/listings/active
-// Auth: x-api-key header with the app's keystring (issued after app approval).
-// No OAuth needed for public listing search — that's the whole reason this
-// path is viable for our use case.
+// Auth: x-api-key header containing "keystring:shared_secret" (colon-joined).
+// Verified 2026-05-13 against live API: both keystring AND shared_secret are
+// required even for public listing search (read-only, no OAuth).
 //
 // Spec: https://developers.etsy.com/documentation/reference/#operation/findAllListingsActive
 //
-// Caveats verified during scaffolding:
-// - Free tier rate limit: 10 req/sec, 10k req/day. Plenty for our scale.
-// - taxonomy_id 162 = "Clothing" — narrows search to apparel.
+// Caveats verified against live data:
+// - Free tier rate limit: 5 req/sec, 5k req/day.
+// - taxonomy_id 374 = "Clothing" — narrows search to apparel.
+//   (Verified via /buyer-taxonomy/nodes; 162 was a stale older ID.)
 // - keywords are space-separated; max ~256 chars.
 // - Response: { count, results: [{ price: { amount, divisor, currency_code }, ... }] }.
+// - Mixed currencies (USD/EUR/GBP) are returned. We filter to USD only for v1.
 
 import type { ScrapeResult } from './search-scraper';
 
 const ETSY_BASE = 'https://openapi.etsy.com/v3/application';
 const ENDPOINT = '/listings/active';
 
-const TAXONOMY_CLOTHING = 162;
+const TAXONOMY_CLOTHING = 374;
 const LIMIT = 30;
 const TIMEOUT_MS = 10_000;
 
@@ -55,7 +57,8 @@ function listingPriceCents(l: EtsyListing): number | null {
 
 export async function etsyOpenApiSearch(query: string): Promise<ScrapeResult> {
   const apiKey = process.env.ETSY_API_KEY;
-  if (!apiKey) {
+  const sharedSecret = process.env.ETSY_SHARED_SECRET;
+  if (!apiKey || !sharedSecret) {
     return { prices: [], status: 'error' };
   }
 
@@ -73,7 +76,7 @@ export async function etsyOpenApiSearch(query: string): Promise<ScrapeResult> {
   try {
     const resp = await fetch(url, {
       headers: {
-        'x-api-key': apiKey,
+        'x-api-key': `${apiKey}:${sharedSecret}`,
         Accept: 'application/json',
       },
       signal: ac.signal,
