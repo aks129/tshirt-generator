@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
-import { and, eq, lt, or } from 'drizzle-orm';
+import { and, eq, gt, isNotNull, isNull, lt, or } from 'drizzle-orm';
 import { db } from '@/lib/db/client';
 import { listings, designs } from '@/lib/db/schema';
 import { getProduct } from '@/lib/printify/get-product';
 import { logEvent } from '@/lib/events';
+import { processListingPhotos } from '@/lib/mockups/process-listing';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -65,10 +66,54 @@ export async function GET(req: Request) {
     }
   }
 
+  // Photos backfill pass — any live listing without photos, < 7 days old.
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const pendingPhotos = await db
+    .select()
+    .from(listings)
+    .where(and(
+      eq(listings.status, 'live'),
+      isNotNull(listings.etsyListingId),
+      isNull(listings.photosUploadedAt),
+      gt(listings.createdAt, sevenDaysAgo),
+    ));
+
+  let photosUploaded = 0;
+  let photosSkipped = 0;
+  for (const l of pendingPhotos) {
+    try {
+      const r = await processListingPhotos(l.id);
+      if (r.ok) {
+        photosUploaded++;
+      } else if (r.errorCode === 'NOT_CONNECTED' || r.errorCode === 'AUTH_EXPIRED') {
+        photosSkipped++;
+        break;
+      } else {
+        photosSkipped++;
+      }
+    } catch {
+      photosSkipped++;
+    }
+  }
+
   await logEvent({
     type: 'generated',
-    payload: { kind: 'reconcile_run', scanned: stuck.length, reconciled, failed },
+    payload: {
+      kind: 'reconcile_run',
+      scanned: stuck.length,
+      reconciled,
+      failed,
+      photosUploaded,
+      photosSkipped,
+    },
   });
 
-  return NextResponse.json({ ok: true, scanned: stuck.length, reconciled, failed });
+  return NextResponse.json({
+    ok: true,
+    scanned: stuck.length,
+    reconciled,
+    failed,
+    photosUploaded,
+    photosSkipped,
+  });
 }
