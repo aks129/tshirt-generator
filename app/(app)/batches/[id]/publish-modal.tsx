@@ -6,7 +6,7 @@ import type { Concept } from '@/lib/schemas';
 import type { ListingCopy } from '@/lib/etsy/validators';
 
 type Draft = ListingCopy & { source: 'gemini' | 'fallback' };
-type ModalStatus = 'loading_draft' | 'editing' | 'publishing' | 'live' | 'slow' | 'failed' | 'blocked';
+type ModalStatus = 'loading_draft' | 'editing' | 'publishing' | 'live' | 'slow' | 'queued' | 'failed' | 'blocked';
 
 export function PublishModal({
   design,
@@ -198,6 +198,13 @@ export function PublishModal({
         /* keep polling */
       }
     }
+    // 60s passed without Etsy returning an external_handle.
+    // The Printify→Etsy publish queue is async and can take minutes-to-hours
+    // when their backend is busy. We've created the product on Printify and
+    // triggered publish; the daily reconcile cron will flip the listing to
+    // live whenever Etsy actually receives it. Let the user move on.
+    setStatus('queued');
+    onPublished();
   }
 
   function updateField<K extends keyof ListingCopy>(field: K, value: ListingCopy[K]) {
@@ -216,6 +223,7 @@ export function PublishModal({
         <div className="border-b border-zinc-200 px-6 py-4">
           <h2 className="text-lg font-bold">
             {status === 'live' ? '✓ Listed on Etsy' :
+              status === 'queued' ? '⏳ Queued at Printify' :
               status === 'slow' ? 'Publishing…' :
               status === 'publishing' ? 'Publishing…' :
               status === 'loading_draft' ? 'Drafting listing copy…' :
@@ -320,7 +328,26 @@ export function PublishModal({
             <div className="space-y-3">
               <Spinner label={status === 'slow' ? 'Etsy is taking longer than usual — polling…' : 'Publishing to Printify and Etsy…'} />
               <p className="text-xs text-zinc-500">
-                This can take 30–60 seconds. Don't close this window.
+                Normally finishes in 30–60 seconds. Safe to wait or close — if it
+                takes longer it'll show in <a href="/listings" className="underline">Listings</a> once Etsy receives it.
+              </p>
+            </div>
+          )}
+
+          {status === 'queued' && (
+            <div className="space-y-3">
+              <div className="text-2xl text-center">⏳</div>
+              <p className="text-sm text-center">
+                Product created on Printify and queued for Etsy publish.
+              </p>
+              <p className="rounded bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                Printify's Etsy publish queue can take 5 minutes to several hours.
+                We'll flip the listing to <strong>live</strong> automatically the
+                moment Etsy receives it (daily reconcile cron at 6am UTC, or check
+                the <a href="/listings" className="underline">Listings page</a> sooner).
+              </p>
+              <p className="text-xs text-zinc-500">
+                You can close this window and move on to the next design.
               </p>
             </div>
           )}
@@ -388,7 +415,7 @@ export function PublishModal({
 
         <div className="flex justify-end gap-2 border-t border-zinc-200 px-6 py-4">
           <button type="button" className="rounded-md border border-zinc-300 px-4 py-2 text-sm" onClick={onClose}>
-            {status === 'live' ? 'Close' : 'Cancel'}
+            {status === 'live' || status === 'queued' ? 'Close' : 'Cancel'}
           </button>
           {status === 'editing' && (
             <button
