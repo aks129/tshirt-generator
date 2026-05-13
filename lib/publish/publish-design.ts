@@ -21,8 +21,15 @@ export async function runPublish(input: {
   pollTimeoutMs?: number;
   preCreatedProductId?: string;
 }): Promise<PublishResult> {
-  const pollInterval = input.pollIntervalMs ?? 3000;
-  const pollTimeout = input.pollTimeoutMs ?? 30_000;
+  // Default poll budget is tight on purpose: Vercel function maxDuration is
+  // 60s. Safety check + upload + create + publish already costs ~15-25s.
+  // 30s of polling on top routinely tripped FUNCTION_INVOCATION_TIMEOUT.
+  // Fast-publish products (most of them) return external_handle in 2-3s, so
+  // 5s catches the common case. Slow ones flip to publishing_slow and are
+  // picked up by client polling (publish-modal.tsx pollListing every 5s for
+  // ~60s) and by the daily cron reconcile.
+  const pollInterval = input.pollIntervalMs ?? 2000;
+  const pollTimeout = input.pollTimeoutMs ?? 5000;
 
   let productId = input.preCreatedProductId;
 
