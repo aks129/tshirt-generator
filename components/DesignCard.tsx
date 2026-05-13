@@ -6,9 +6,10 @@ import { StatusBadge } from '@/components/BatchStatusBadge';
 import type { Design } from '@/lib/db/schema';
 import type { Concept } from '@/lib/schemas';
 
-export function DesignCard({ design, onAction }: {
+export function DesignCard({ design, onAction, onApprove }: {
   design: Design;
   onAction: () => void;
+  onApprove?: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const concept = design.concept as Concept;
@@ -45,7 +46,12 @@ export function DesignCard({ design, onAction }: {
         )}
         {design.status === 'pending_review' && (
           <div className="flex gap-2 pt-1">
-            <button disabled={busy} onClick={() => act('approve')} className="flex-1 rounded bg-black px-2 py-1 text-xs text-white">Approve</button>
+            <button
+              disabled={busy}
+              onClick={() => onApprove ? onApprove() : act('approve')}
+              className="flex-1 rounded bg-black px-2 py-1 text-xs text-white"
+              type="button"
+            >Approve</button>
             <button disabled={busy} onClick={() => act('reject')} className="flex-1 rounded border px-2 py-1 text-xs">Reject</button>
             <button disabled={busy} onClick={() => act('regenerate')} className="rounded border px-2 py-1 text-xs">↻</button>
           </div>
