@@ -22,6 +22,13 @@
       "when": 1778675659750,
       "tag": "0002_slow_arachne",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1778703272047,
+      "tag": "0003_motionless_ben_grimm",
+      "breakpoints": true
     }
   ]
 }

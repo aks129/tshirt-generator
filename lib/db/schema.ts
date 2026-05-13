@@ -43,6 +43,7 @@ export const designs = pgTable('designs', {
   generationCostCents: integer('generation_cost_cents').notNull().default(0),
   safetyFlags: text('safety_flags').array().notNull().default([]),
   failureReason: text('failure_reason'),
+  listingDraft: jsonb('listing_draft'),
 });
 
 export const listings = pgTable('listings', {

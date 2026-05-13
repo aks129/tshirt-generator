@@ -8,7 +8,11 @@ import { etsyOpenApiSearch } from './open-api-client';
 import { computeStats, type PriceStats } from './stats';
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
-const MIN_SAMPLE_COUNT = 5;
+// Niche slogans often return 3-4 USD comparables after we filter out
+// non-USD listings. 5 was too strict — many real queries fell through to
+// the floor even when there was usable signal. 3 gives us a workable
+// median with a "limited data" caveat in the UI.
+const MIN_SAMPLE_COUNT = 3;
 
 function fetchCompetitiveData(query: string): Promise<ScrapeResult> {
   // Preferred: Etsy's own Open API (official, free, no scraping).

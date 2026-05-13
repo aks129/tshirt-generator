@@ -1,0 +1,1 @@
+ALTER TABLE "designs" ADD COLUMN "listing_draft" jsonb;

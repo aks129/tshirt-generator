@@ -119,18 +119,31 @@ describe('recommendPrice', () => {
     expect(r.source).toBe('fresh');
   });
 
-  it('returns empty + stale when scrape has <5 prices but prior row exists', async () => {
+  it('returns empty + stale when scrape has <MIN_SAMPLE_COUNT prices but prior row exists', async () => {
     vi.mocked(db.query.etsyPriceSamples.findFirst).mockResolvedValue({
       id: 'x', query: 'q', queryHash: 'h', sampleCount: 10,
       minCents: 1500, p25Cents: 1800, medianCents: 2100, p75Cents: 2400, maxCents: 2800,
       rawPrices: [], fetchedAt: new Date(Date.now() - 25 * 3600 * 1000), status: 'ok',
     } as never);
     vi.mocked(scrapeEtsySearch).mockResolvedValueOnce({
-      prices: [2000, 2100], status: 'ok',  // only 2 prices — below 5 threshold
+      prices: [2100, 2200], status: 'ok',  // only 2 prices — below 3 threshold
     });
 
     const r = await recommendPrice({ concept: baseConcept, settings: baseSettings });
     expect(r.source).toBe('stale');
     expect(r.recommendedCents).toBe(2000); // stale median 2100 - 100
+  });
+
+  it('accepts 3 prices as a fresh sample (threshold boundary)', async () => {
+    vi.mocked(db.query.etsyPriceSamples.findFirst).mockResolvedValue(null as never);
+    vi.mocked(scrapeEtsySearch).mockResolvedValueOnce({
+      prices: [1995, 2799, 4259], status: 'ok',  // exactly 3 — should be accepted
+    });
+
+    const r = await recommendPrice({ concept: baseConcept, settings: baseSettings });
+    expect(r.source).toBe('fresh');
+    expect(r.sampleCount).toBe(3);
+    expect(r.statistics?.median).toBe(2799);
+    expect(r.recommendedCents).toBe(2699); // 2799 - 100 offset
   });
 });
