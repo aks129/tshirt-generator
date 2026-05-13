@@ -6,7 +6,18 @@ import type { Concept } from '@/lib/schemas';
 import type { ListingCopy } from '@/lib/etsy/validators';
 
 type Draft = ListingCopy & { source: 'gemini' | 'fallback' };
-type ModalStatus = 'loading_draft' | 'editing' | 'publishing' | 'live' | 'slow' | 'queued' | 'failed' | 'blocked';
+type ModalStatus =
+  | 'loading_draft'
+  | 'editing'
+  | 'publishing'
+  | 'live'
+  | 'slow'
+  | 'queued'
+  | 'uploading_photos'
+  | 'live_with_photos'
+  | 'photos_failed'
+  | 'failed'
+  | 'blocked';
 
 export function PublishModal({
   design,
@@ -169,6 +180,9 @@ export function PublishModal({
         setEtsyUrl(json.etsyUrl || '');
         setStatus('live');
         onPublished();
+        if (json.listingId) {
+          await uploadPhotos(json.listingId);
+        }
         return;
       }
       if (json.status === 'publishing_slow' && json.listingId) {
@@ -179,6 +193,29 @@ export function PublishModal({
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setStatus('failed');
+    }
+  }
+
+  async function uploadPhotos(listingId: string) {
+    setStatus('uploading_photos');
+    try {
+      const res = await fetch(`/api/listings/${listingId}/photos`, { method: 'POST' });
+      const text = await res.text();
+      if (!text) {
+        setStatus('photos_failed');
+        setError('Server timed out uploading photos. Will retry from /listings or via cron.');
+        return;
+      }
+      const json: { ok?: boolean; uploadedCount?: number; error?: string } = JSON.parse(text);
+      if (json.ok && json.uploadedCount && json.uploadedCount > 0) {
+        setStatus('live_with_photos');
+        return;
+      }
+      setStatus('photos_failed');
+      setError(json.error || 'Photos failed to upload.');
+    } catch (err) {
+      setStatus('photos_failed');
+      setError(err instanceof Error ? err.message : String(err));
     }
   }
 
@@ -222,7 +259,10 @@ export function PublishModal({
       <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl bg-white shadow-2xl">
         <div className="border-b border-zinc-200 px-6 py-4">
           <h2 className="text-lg font-bold">
-            {status === 'live' ? '✓ Listed on Etsy' :
+            {status === 'live_with_photos' ? '✓ Listed on Etsy with 7 photos' :
+              status === 'live' ? '✓ Listed on Etsy' :
+              status === 'uploading_photos' ? 'Uploading mockup photos…' :
+              status === 'photos_failed' ? '⚠ Listed but photos failed' :
               status === 'queued' ? '⏳ Queued at Printify' :
               status === 'slow' ? 'Publishing…' :
               status === 'publishing' ? 'Publishing…' :
@@ -352,6 +392,43 @@ export function PublishModal({
             </div>
           )}
 
+          {status === 'uploading_photos' && (
+            <div className="space-y-3">
+              <Spinner label="Uploading 6 mockup photos to Etsy…" />
+              <p className="text-xs text-zinc-500">
+                About 15 seconds. Safe to close — backfill cron picks up if interrupted.
+              </p>
+            </div>
+          )}
+
+          {status === 'live_with_photos' && (
+            <div className="space-y-3 text-center">
+              <div className="text-4xl">✅</div>
+              <p className="text-sm">Listing is live on Etsy with 7 photos.</p>
+              {etsyUrl && (
+                <a href={etsyUrl} target="_blank" rel="noopener" className="inline-block rounded-md bg-black px-4 py-2 text-sm text-white">
+                  Open on Etsy ↗
+                </a>
+              )}
+            </div>
+          )}
+
+          {status === 'photos_failed' && (
+            <div className="space-y-3">
+              <p className="rounded bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                ⚠ Listing is live, but photo upload failed: {error}
+              </p>
+              <p className="text-xs text-zinc-500">
+                You can retry from the <a href="/listings" className="underline">Listings page</a>, or the cron will retry within 24h.
+              </p>
+              {etsyUrl && (
+                <a href={etsyUrl} target="_blank" rel="noopener" className="inline-block rounded-md bg-black px-4 py-2 text-sm text-white">
+                  Open on Etsy ↗
+                </a>
+              )}
+            </div>
+          )}
+
           {status === 'live' && (
             <div className="space-y-3 text-center">
               <div className="text-4xl">✅</div>
@@ -415,7 +492,7 @@ export function PublishModal({
 
         <div className="flex justify-end gap-2 border-t border-zinc-200 px-6 py-4">
           <button type="button" className="rounded-md border border-zinc-300 px-4 py-2 text-sm" onClick={onClose}>
-            {status === 'live' || status === 'queued' ? 'Close' : 'Cancel'}
+            {status === 'live' || status === 'queued' || status === 'live_with_photos' || status === 'photos_failed' ? 'Close' : 'Cancel'}
           </button>
           {status === 'editing' && (
             <button

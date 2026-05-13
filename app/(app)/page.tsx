@@ -37,12 +37,21 @@ export default async function Dashboard() {
 
   const s = await db.query.settings.findFirst();
   const needsSetup = !s?.printifySetupAt;
+  const needsEtsy = !s?.etsyAccessToken;
+  const hasLiveListings = (weekStats?.live ?? 0) > 0;
 
   return (
     <div className="space-y-8">
       {needsSetup && (
         <div className="flex items-center justify-between rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm">
           <span>⚠ Set up Printify before publishing.</span>
+          <Link href="/settings" className="rounded-md bg-zinc-900 px-3 py-1.5 text-xs text-white">Open settings</Link>
+        </div>
+      )}
+
+      {!needsSetup && needsEtsy && hasLiveListings && (
+        <div className="flex items-center justify-between rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm">
+          <span>⚠ Connect Etsy to add extra photos to your listings.</span>
           <Link href="/settings" className="rounded-md bg-zinc-900 px-3 py-1.5 text-xs text-white">Open settings</Link>
         </div>
       )}

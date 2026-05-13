@@ -19,6 +19,9 @@ export default async function ListingsPage() {
       designId: listings.designId,
       designMockupUrl: designs.mockupBlobUrl,
       designHeadline: designs.concept,
+      photosUploadedAt: listings.photosUploadedAt,
+      photosCount: listings.photosCount,
+      photosFailureReason: listings.photosFailureReason,
     })
     .from(listings)
     .leftJoin(designs, eq(listings.designId, designs.id))

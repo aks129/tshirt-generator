@@ -16,6 +16,9 @@ type Row = {
   designId: string;
   designMockupUrl: string | null;
   designHeadline: unknown;
+  photosUploadedAt: Date | null;
+  photosCount: number;
+  photosFailureReason: string | null;
 };
 
 const STATUSES = ['all', 'live', 'publishing', 'failed'] as const;
@@ -30,6 +33,27 @@ export function ListingsTable({ rows }: { rows: Row[] }) {
     : filter === 'publishing'
       ? rows.filter((r) => r.status === 'publishing' || r.status === 'publishing_slow')
       : rows.filter((r) => r.status === filter);
+
+  async function uploadPhotos(id: string) {
+    setRetryingId(id);
+    try {
+      const res = await fetch(`/api/listings/${id}/photos`, { method: 'POST' });
+      const text = await res.text();
+      if (!text) {
+        alert('Server timed out. Refreshing.');
+      } else {
+        try {
+          const j = JSON.parse(text);
+          if (!j.ok) alert(j.error || 'Upload failed');
+        } catch {
+          alert(`Unexpected response (${res.status})`);
+        }
+      }
+      window.location.reload();
+    } finally {
+      setRetryingId(null);
+    }
+  }
 
   async function retry(id: string) {
     setRetryingId(id);
@@ -79,6 +103,7 @@ export function ListingsTable({ rows }: { rows: Row[] }) {
               <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">Design</th>
               <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">Title</th>
               <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">Status</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">Photos</th>
               <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">Links</th>
               <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">Created</th>
               <th />
@@ -108,6 +133,24 @@ export function ListingsTable({ rows }: { rows: Row[] }) {
                       <div className="mt-1 text-xs text-red-600" title={r.failureReason}>
                         {r.failureReason.slice(0, 80)}…
                       </div>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-sm">
+                    {r.photosUploadedAt ? (
+                      <span className={r.photosCount === 6 ? 'text-emerald-700' : 'text-amber-700'}>
+                        ✓ {r.photosCount} photos
+                      </span>
+                    ) : r.status === 'live' ? (
+                      <button
+                        type="button"
+                        disabled={retryingId === r.id}
+                        onClick={() => uploadPhotos(r.id)}
+                        className="rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-50"
+                      >
+                        {retryingId === r.id ? 'Uploading…' : '↑ Add photos'}
+                      </button>
+                    ) : (
+                      <span className="text-xs text-zinc-400">—</span>
                     )}
                   </td>
                   <td className="px-3 py-2 text-sm">
@@ -153,7 +196,7 @@ export function ListingsTable({ rows }: { rows: Row[] }) {
             })}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-3 py-12 text-center text-sm text-zinc-500">
+                <td colSpan={7} className="px-3 py-12 text-center text-sm text-zinc-500">
                   No listings yet.
                 </td>
               </tr>
