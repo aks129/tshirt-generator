@@ -11,6 +11,7 @@ import {
 } from '@/lib/canvas/fonts';
 import { renderRowToBlob, safeFileName, downloadBlob, type RenderSettings } from '@/lib/canvas/render';
 import { makeZip } from '@/lib/canvas/zip';
+import { upload } from '@vercel/blob/client';
 
 type Row = { id: number; text: string };
 
@@ -138,30 +139,44 @@ export function BulkGenerator() {
     if (!visible.length) return;
     setBusy(true);
     try {
-      const fd = new FormData();
-      fd.append(
-        'meta',
-        JSON.stringify({
-          fontName: settings.fontName,
-          font: settings.font,
-          textColor: settings.textColor,
-          hAlign: settings.hAlign,
-          vAlign: settings.vAlign,
-          shirtColor: settings.shirtColor,
-        }),
-      );
+      const batchKey = Date.now().toString(36);
+      const uploaded: { text: string; blobUrl: string }[] = [];
       for (let i = 0; i < visible.length; i++) {
         const r = visible[i];
-        setBusyText(`Rendering ${i + 1} / ${visible.length}…`);
+        setBusyText(`Rendering & uploading ${i + 1} / ${visible.length}…`);
         const blob = await renderRowToBlob(r.text, renderSettings);
-        fd.append(`design[${i}][text]`, r.text);
-        fd.append(`design[${i}][png]`, blob, `${safeFileName(r.text, `shirt_${r.id}`)}.png`);
+        const filename = `designs/bulk/${batchKey}/${String(i + 1).padStart(3, '0')}_${safeFileName(r.text, `shirt_${r.id}`)}.png`;
+        const result = await upload(filename, blob, {
+          access: 'public',
+          handleUploadUrl: '/api/bulk-batches/upload-token',
+          contentType: 'image/png',
+        });
+        uploaded.push({ text: r.text, blobUrl: result.url });
         await new Promise((res) => setTimeout(res, 0));
       }
-      setBusyText('Uploading…');
-      const res = await fetch('/api/bulk-batches', { method: 'POST', body: fd });
+      setBusyText('Saving batch…');
+      const res = await fetch('/api/bulk-batches', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          meta: {
+            fontName: settings.fontName,
+            font: settings.font,
+            textColor: settings.textColor,
+            hAlign: settings.hAlign,
+            vAlign: settings.vAlign,
+            shirtColor: settings.shirtColor,
+          },
+          designs: uploaded,
+        }),
+      });
+      const ct = res.headers.get('content-type') || '';
+      if (!ct.includes('application/json')) {
+        const txt = await res.text();
+        throw new Error(`Server returned ${res.status}: ${txt.slice(0, 200)}`);
+      }
       const json = await res.json();
-      if (!res.ok || !json.ok) throw new Error(json.error || `Upload failed (${res.status})`);
+      if (!res.ok || !json.ok) throw new Error(json.error || `Save failed (${res.status})`);
       router.push(`/batches/${json.batchId}`);
     } catch (err) {
       alert(err instanceof Error ? err.message : String(err));
@@ -240,6 +255,7 @@ export function BulkGenerator() {
           <aside className="overflow-y-auto rounded-xl border border-zinc-200 bg-white p-4">
             <Section label="Font">
               <select
+                aria-label="Font family"
                 value={settings.fontName}
                 onChange={(e) => {
                   const f = allFonts.find((x) => x.name === e.target.value);
@@ -328,6 +344,7 @@ export function BulkGenerator() {
                   onChange={(e) => setSettings({ ...settings, shirtColor: e.target.value })}
                   className="h-7 w-7 cursor-pointer rounded-md border border-zinc-300 bg-transparent p-0"
                   title="Custom shirt color"
+                  aria-label="Custom shirt color"
                 />
               </div>
               <div className={muted + ' mt-1'}>PNG export has no shirt — print-ready transparent bg.</div>
@@ -539,7 +556,10 @@ function ColorRow({
       {presets.map((c) => (
         <button
           key={c}
+          type="button"
           onClick={() => onChange(c)}
+          aria-label={`Color ${c}`}
+          title={c}
           className="h-6 w-6 rounded-md cursor-pointer"
           style={{ background: c, border: value === c ? '2px solid #2a6df4' : '1px solid #ccc' }}
         />
@@ -549,6 +569,8 @@ function ColorRow({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className="h-6 w-6 cursor-pointer rounded-md border border-zinc-300 bg-transparent p-0"
+        aria-label="Custom color"
+        title="Custom color"
       />
     </div>
   );
