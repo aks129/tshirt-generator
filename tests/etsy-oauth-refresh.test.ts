@@ -47,12 +47,12 @@ describe('getEtsyAccessToken', () => {
     } as never);
     chainUpdateMock();
     vi.spyOn(global, 'fetch').mockResolvedValueOnce(
-      new Response(JSON.stringify({ access_token: 'abc.new', refresh_token: 'newRefresh', expires_in: 3600 }), {
+      new Response(JSON.stringify({ access_token: '12345.new', refresh_token: 'newRefresh', expires_in: 3600 }), {
         status: 200, headers: { 'content-type': 'application/json' },
       }),
     );
     const t = await getEtsyAccessToken();
-    expect(t).toBe('abc.new');
+    expect(t).toBe('12345.new');
   });
 
   it('clears tokens + throws EtsyAuthExpired on 401 from token endpoint', async () => {

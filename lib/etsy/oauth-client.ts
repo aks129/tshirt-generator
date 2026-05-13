@@ -31,7 +31,7 @@ function parseUserId(accessToken: string): number {
   const prefix = accessToken.split('.')[0];
   const n = Number(prefix);
   if (!Number.isFinite(n) || n <= 0) {
-    return 0;
+    throw new Error('Etsy access token has unexpected format');
   }
   return n;
 }
