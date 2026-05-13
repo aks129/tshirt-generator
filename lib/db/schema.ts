@@ -1,5 +1,5 @@
 import {
-  pgTable, uuid, text, integer, jsonb, boolean, timestamp, pgEnum,
+  pgTable, uuid, text, integer, bigint, jsonb, boolean, timestamp, pgEnum,
 } from 'drizzle-orm/pg-core';
 
 export const batchStatusEnum = pgEnum('batch_status', [
@@ -60,6 +60,9 @@ export const listings = pgTable('listings', {
   failureReason: text('failure_reason'),
   safetyBlocked: boolean('safety_blocked').notNull().default(false),
   editedByUser: boolean('edited_by_user').notNull().default(false),
+  photosUploadedAt: timestamp('photos_uploaded_at', { withTimezone: true }),
+  photosCount: integer('photos_count').notNull().default(0),
+  photosFailureReason: text('photos_failure_reason'),
 });
 
 export const nicheLibrary = pgTable('niche_library', {
@@ -84,6 +87,11 @@ export const settings = pgTable('settings', {
   printifySetupAt: timestamp('printify_setup_at', { withTimezone: true }),
   priceOffsetCents: integer('price_offset_cents').notNull().default(100),
   minPriceFloorCents: integer('min_price_floor_cents').notNull().default(1499),
+  etsyUserId: bigint('etsy_user_id', { mode: 'number' }),
+  etsyShopIdOauth: bigint('etsy_shop_id_oauth', { mode: 'number' }),
+  etsyAccessToken: text('etsy_access_token'),
+  etsyRefreshToken: text('etsy_refresh_token'),
+  etsyTokenExpiresAt: timestamp('etsy_token_expires_at', { withTimezone: true }),
 });
 
 export const generationEvents = pgTable('generation_events', {
