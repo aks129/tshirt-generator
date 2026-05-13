@@ -1,0 +1,336 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import type { Design } from '@/lib/db/schema';
+import type { Concept } from '@/lib/schemas';
+import type { ListingCopy } from '@/lib/etsy/validators';
+
+type Draft = ListingCopy & { source: 'gemini' | 'fallback' };
+type ModalStatus = 'loading_draft' | 'editing' | 'publishing' | 'live' | 'slow' | 'failed' | 'blocked';
+
+export function PublishModal({
+  design,
+  onClose,
+  onPublished,
+}: {
+  design: Design;
+  onClose: () => void;
+  onPublished: () => void;
+}) {
+  const [status, setStatus] = useState<ModalStatus>('loading_draft');
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [originalDraft, setOriginalDraft] = useState<Draft | null>(null);
+  const [error, setError] = useState<string>('');
+  const [safetyFlags, setSafetyFlags] = useState<string[]>([]);
+  const [etsyUrl, setEtsyUrl] = useState<string>('');
+
+  const concept = design.concept as Concept;
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/designs/${design.id}/draft-listing`, { method: 'POST' });
+        const json = await res.json();
+        if (cancelled) return;
+        if (!res.ok || !json.ok) {
+          setError(json.error || 'Failed to draft listing');
+          setStatus('failed');
+          return;
+        }
+        setDraft(json.draft);
+        setOriginalDraft(json.draft);
+        setStatus('editing');
+      } catch (err) {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : String(err));
+        setStatus('failed');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [design.id]);
+
+  async function publish(override = false) {
+    if (!draft) return;
+    setStatus('publishing');
+    setError('');
+    try {
+      const res = await fetch('/api/listings', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          design_id: design.id,
+          title: draft.title,
+          tags: draft.tags,
+          description: draft.description,
+          override_safety: override,
+        }),
+      });
+      const json = await res.json();
+      if (res.status === 422 && json.flags) {
+        setSafetyFlags(json.flags);
+        setStatus('blocked');
+        return;
+      }
+      if (!res.ok && !json.ok) {
+        setError(json.error || `Publish failed (${res.status})`);
+        setStatus('failed');
+        return;
+      }
+      if (json.status === 'live') {
+        setEtsyUrl(json.etsyUrl || '');
+        setStatus('live');
+        onPublished();
+        return;
+      }
+      if (json.status === 'publishing_slow') {
+        setStatus('slow');
+        pollListing(json.listingId);
+        return;
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setStatus('failed');
+    }
+  }
+
+  async function pollListing(listingId: string) {
+    for (let i = 0; i < 12; i++) {
+      await new Promise((r) => setTimeout(r, 5000));
+      try {
+        const r = await fetch(`/api/listings/${listingId}`);
+        const j = await r.json();
+        if (j.ok && j.listing?.status === 'live') {
+          setEtsyUrl(j.etsyUrl || '');
+          setStatus('live');
+          onPublished();
+          return;
+        }
+      } catch {
+        /* keep polling */
+      }
+    }
+  }
+
+  function updateField<K extends keyof ListingCopy>(field: K, value: ListingCopy[K]) {
+    if (!draft) return;
+    setDraft({ ...draft, [field]: value } as Draft);
+  }
+
+  const titleLen = draft?.title.length ?? 0;
+  const tagsValid = draft && draft.tags.length === 13 && draft.tags.every((t) => /^[a-z0-9 ]+$/.test(t) && t.length <= 20);
+  const canPublish = draft && titleLen >= 5 && titleLen <= 140 && tagsValid && draft.description.length >= 20;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl bg-white shadow-2xl">
+        <div className="border-b border-zinc-200 px-6 py-4">
+          <h2 className="text-lg font-bold">
+            {status === 'live' ? '✓ Listed on Etsy' :
+              status === 'slow' ? 'Publishing…' :
+              status === 'publishing' ? 'Publishing…' :
+              status === 'loading_draft' ? 'Drafting listing copy…' :
+              status === 'blocked' ? '⚠ Content blocked' :
+              status === 'failed' ? '✕ Failed' : 'Draft Etsy listing'}
+          </h2>
+          <p className="mt-1 text-sm text-zinc-500">Slogan: "{concept.headline}"</p>
+        </div>
+
+        <div className="px-6 py-4">
+          {status === 'loading_draft' && <Spinner label="Asking Gemini for an SEO-optimized draft…" />}
+
+          {status === 'editing' && draft && (
+            <div className="space-y-4">
+              <Field label={`Title (${titleLen}/140)`}>
+                <input
+                  className={`w-full rounded-md border px-3 py-2 text-sm ${
+                    titleLen > 140 ? 'border-red-500' : 'border-zinc-300'
+                  }`}
+                  value={draft.title}
+                  onChange={(e) => updateField('title', e.target.value)}
+                  aria-label="Listing title"
+                />
+              </Field>
+              <Field label={`Tags (${draft.tags.length}/13)`}>
+                <TagsEditor tags={draft.tags} onChange={(t) => updateField('tags', t)} />
+              </Field>
+              <Field label="Description">
+                <textarea
+                  className="h-32 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
+                  value={draft.description}
+                  onChange={(e) => updateField('description', e.target.value)}
+                  aria-label="Listing description"
+                />
+              </Field>
+              {draft.source === 'fallback' && (
+                <p className="rounded bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  ⚠ AI was unavailable — using a basic fallback draft. Edit before publishing.
+                </p>
+              )}
+            </div>
+          )}
+
+          {(status === 'publishing' || status === 'slow') && (
+            <div className="space-y-3">
+              <Spinner label={status === 'slow' ? 'Etsy is taking longer than usual — polling…' : 'Publishing to Printify and Etsy…'} />
+              <p className="text-xs text-zinc-500">
+                This can take 30–60 seconds. Don't close this window.
+              </p>
+            </div>
+          )}
+
+          {status === 'live' && (
+            <div className="space-y-3 text-center">
+              <div className="text-4xl">✅</div>
+              <p className="text-sm">Listing is live on Etsy.</p>
+              {etsyUrl && (
+                <a
+                  href={etsyUrl}
+                  target="_blank"
+                  rel="noopener"
+                  className="inline-block rounded-md bg-black px-4 py-2 text-sm text-white"
+                >
+                  Open on Etsy ↗
+                </a>
+              )}
+            </div>
+          )}
+
+          {status === 'blocked' && (
+            <div className="space-y-3">
+              <p className="text-sm">Content safety flagged this listing:</p>
+              <ul className="list-disc pl-5 text-sm text-amber-700">
+                {safetyFlags.map((f) => (
+                  <li key={f}>{f}</li>
+                ))}
+              </ul>
+              <p className="text-xs text-zinc-500">
+                Edit the copy above, or override (logged for audit).
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="flex-1 rounded-md border border-zinc-300 px-3 py-2 text-sm"
+                  onClick={() => setStatus('editing')}
+                >
+                  Edit copy
+                </button>
+                <button
+                  type="button"
+                  className="flex-1 rounded-md bg-red-600 px-3 py-2 text-sm text-white"
+                  onClick={() => publish(true)}
+                >
+                  Publish anyway
+                </button>
+              </div>
+            </div>
+          )}
+
+          {status === 'failed' && (
+            <div className="space-y-3">
+              <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>
+              <button
+                type="button"
+                className="rounded-md bg-black px-4 py-2 text-sm text-white"
+                onClick={() => setStatus('editing')}
+              >
+                Try again
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-zinc-200 px-6 py-4">
+          <button type="button" className="rounded-md border border-zinc-300 px-4 py-2 text-sm" onClick={onClose}>
+            {status === 'live' ? 'Close' : 'Cancel'}
+          </button>
+          {status === 'editing' && (
+            <button
+              type="button"
+              disabled={!canPublish}
+              className="rounded-md bg-black px-4 py-2 text-sm text-white disabled:opacity-50"
+              onClick={() => publish(false)}
+            >
+              Publish to Etsy →
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-zinc-600">
+        {label}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+function Spinner({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-3 py-6">
+      <div className="h-5 w-5 animate-spin rounded-full border-[3px] border-zinc-200 border-t-zinc-900" />
+      <span className="text-sm text-zinc-700">{label}</span>
+    </div>
+  );
+}
+
+function TagsEditor({
+  tags,
+  onChange,
+}: {
+  tags: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const [input, setInput] = useState('');
+  function addTag(raw: string) {
+    const t = raw.toLowerCase().replace(/[^a-z0-9 ]+/g, '').slice(0, 20).trim();
+    if (!t) return;
+    if (tags.includes(t)) return;
+    if (tags.length >= 13) return;
+    onChange([...tags, t]);
+    setInput('');
+  }
+  function removeTag(i: number) {
+    onChange(tags.filter((_, idx) => idx !== i));
+  }
+  return (
+    <div>
+      <div className="mb-2 flex flex-wrap gap-1.5">
+        {tags.map((t, i) => (
+          <span
+            key={`${t}-${i}`}
+            className="inline-flex items-center gap-1 rounded-full bg-zinc-100 px-2 py-0.5 text-xs"
+          >
+            {t}
+            <button type="button" className="text-zinc-400 hover:text-zinc-700" onClick={() => removeTag(i)}>
+              ✕
+            </button>
+          </span>
+        ))}
+      </div>
+      <input
+        type="text"
+        className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
+        placeholder={tags.length < 13 ? 'Type a tag and press Enter or comma' : '13 tags max'}
+        value={input}
+        disabled={tags.length >= 13}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ',') {
+            e.preventDefault();
+            addTag(input);
+          }
+        }}
+        aria-label="Add tag"
+      />
+    </div>
+  );
+}
