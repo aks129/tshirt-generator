@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import type { Design } from '@/lib/db/schema';
 import type { Concept } from '@/lib/schemas';
 import type { ListingCopy } from '@/lib/etsy/validators';
+import { checkSloganPatterns, checkTitlePatterns } from '@/lib/insights/patterns';
 
 type Draft = ListingCopy & { source: 'gemini' | 'groq' | 'fallback' };
 type ModalStatus =
@@ -367,6 +368,9 @@ export function PublishModal({
               {draft.source === 'groq' && (
                 <p className="text-[11px] text-emerald-600">↻ Drafted by Groq (Gemini was unavailable)</p>
               )}
+
+              <PatternHints slogan={concept.headline} title={draft.title} tags={draft.tags} />
+
             </div>
           )}
 
@@ -513,6 +517,35 @@ export function PublishModal({
         </div>
       </div>
     </div>
+  );
+}
+
+function PatternHints({ slogan, title, tags }: { slogan: string; title: string; tags: string[] }) {
+  const all = [...checkSloganPatterns(slogan), ...checkTitlePatterns(title, tags)];
+  const okCount = all.filter((c) => c.ok).length;
+  return (
+    <details className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs">
+      <summary className="cursor-pointer select-none text-zinc-700">
+        <span className="font-medium">Patterns:</span>{' '}
+        <span className={okCount >= all.length / 2 ? 'text-emerald-700' : 'text-amber-700'}>
+          {okCount}/{all.length} matched
+        </span>{' '}
+        <span className="text-zinc-400">— click for details</span>
+      </summary>
+      <ul className="mt-2 space-y-1">
+        {all.map((c) => (
+          <li key={c.id} className="flex items-start gap-2">
+            <span className={c.ok ? 'text-emerald-600' : 'text-zinc-400'}>{c.ok ? '✓' : '○'}</span>
+            <span className="flex-1">
+              <span className={c.ok ? 'text-zinc-700' : 'text-zinc-500'}>{c.label}</span>
+              {!c.ok && c.hint && (
+                <span className="ml-1 text-zinc-400">— {c.hint}</span>
+              )}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 

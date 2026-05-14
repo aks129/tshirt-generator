@@ -13,6 +13,7 @@ import { renderRowToBlob, safeFileName, downloadBlob, type RenderSettings } from
 import { makeZip } from '@/lib/canvas/zip';
 import { upload } from '@vercel/blob/client';
 import { THEMES, type Theme } from '@/lib/themes/library';
+import { TipsPanel } from './tips-panel';
 
 type Row = { id: number; text: string };
 
@@ -431,6 +432,10 @@ export function BulkGenerator() {
             <p className="border-t border-zinc-200 pt-3 text-[11px] leading-relaxed text-zinc-500">
               Settings apply to <strong>all</strong> shirts. Click a row to preview it with the current style.
             </p>
+
+            <div className="mt-4">
+              <TipsPanel />
+            </div>
           </aside>
 
           {/* CENTER — list */}
