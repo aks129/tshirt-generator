@@ -12,6 +12,7 @@ import {
 import { renderRowToBlob, safeFileName, downloadBlob, type RenderSettings } from '@/lib/canvas/render';
 import { makeZip } from '@/lib/canvas/zip';
 import { upload } from '@vercel/blob/client';
+import { THEMES, type Theme } from '@/lib/themes/library';
 
 type Row = { id: number; text: string };
 
@@ -46,6 +47,7 @@ export function BulkGenerator() {
   const [busyText, setBusyText] = useState('');
   const [view, setView] = useState<'editor' | 'grid'>('editor');
   const [gridBg, setGridBg] = useState<'checker' | 'white' | 'black'>('checker');
+  const [themesOpen, setThemesOpen] = useState(false);
 
   useEffect(() => {
     preloadAllFonts();
@@ -79,6 +81,32 @@ export function BulkGenerator() {
   const replaceAll = (newText: string) => {
     const lines = newText.split('\n');
     setRows(lines.map((t, i) => ({ id: i + 1, text: t })));
+  };
+
+  const applyTheme = (theme: Theme, mode: 'replace' | 'append') => {
+    if (mode === 'replace') {
+      setRows(theme.slogans.map((t, i) => ({ id: i + 1, text: t })));
+      setSelectedId(1);
+    } else {
+      setRows((rs) => {
+        const base = (rs[rs.length - 1]?.id || 0);
+        const next = [...rs, ...theme.slogans.map((t, i) => ({ id: base + i + 1, text: t }))];
+        return next;
+      });
+    }
+    setThemesOpen(false);
+  };
+
+  const pickTheme = (theme: Theme) => {
+    const visibleCount = rows.filter((r) => (r.text || '').trim()).length;
+    if (visibleCount === 0) {
+      applyTheme(theme, 'replace');
+      return;
+    }
+    const replace = confirm(
+      `Replace your current ${visibleCount} row${visibleCount === 1 ? '' : 's'} with ${theme.slogans.length} "${theme.label}" slogans?\n\nOK = replace · Cancel = append`,
+    );
+    applyTheme(theme, replace ? 'replace' : 'append');
   };
 
   const handleFontUpload = useCallback(async (file: File) => {
@@ -218,6 +246,32 @@ export function BulkGenerator() {
           >
             Grid ({visibleCount})
           </button>
+        </div>
+        <div className="relative">
+          <button type="button" className={btnGhost} onClick={() => setThemesOpen((o) => !o)}>🎨 Themes</button>
+          {themesOpen && (
+            <>
+              <div className="fixed inset-0 z-[40]" onClick={() => setThemesOpen(false)} />
+              <div className="absolute right-0 z-50 mt-1 w-72 rounded-md border border-zinc-200 bg-white p-1 shadow-lg">
+                {THEMES.map((t) => (
+                  <button
+                    type="button"
+                    key={t.slug}
+                    onClick={() => pickTheme(t)}
+                    className="flex w-full items-start gap-2 rounded px-2.5 py-2 text-left hover:bg-zinc-50"
+                  >
+                    <span className="text-lg leading-none">{t.emoji}</span>
+                    <span className="flex-1">
+                      <span className="block text-sm font-medium text-zinc-900">
+                        {t.label} <span className="text-xs font-normal text-zinc-500">({t.slogans.length})</span>
+                      </span>
+                      <span className="block text-xs text-zinc-500">{t.description}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </div>
         <button className={btnGhost} onClick={pasteList}>📋 Paste list</button>
         <button className={btnGhost} onClick={() => replaceAll(SAMPLE_TEXT)}>↺ Sample</button>
