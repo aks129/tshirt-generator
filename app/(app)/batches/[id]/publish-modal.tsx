@@ -5,7 +5,7 @@ import type { Design } from '@/lib/db/schema';
 import type { Concept } from '@/lib/schemas';
 import type { ListingCopy } from '@/lib/etsy/validators';
 
-type Draft = ListingCopy & { source: 'gemini' | 'fallback' };
+type Draft = ListingCopy & { source: 'gemini' | 'groq' | 'fallback' };
 type ModalStatus =
   | 'loading_draft'
   | 'editing'
@@ -360,6 +360,12 @@ export function PublishModal({
                 <p className="rounded bg-amber-50 px-3 py-2 text-xs text-amber-800">
                   ⚠ AI was unavailable — using a basic fallback draft. Edit before publishing.
                 </p>
+              )}
+              {draft.source === 'gemini' && (
+                <p className="text-[11px] text-zinc-400">✓ Drafted by Gemini</p>
+              )}
+              {draft.source === 'groq' && (
+                <p className="text-[11px] text-emerald-600">↻ Drafted by Groq (Gemini was unavailable)</p>
               )}
             </div>
           )}

@@ -4,6 +4,7 @@ import { batches, designs, listings } from '@/lib/db/schema';
 import { desc, sql, gte, eq, or } from 'drizzle-orm';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { RecentBatches } from './recent-batches';
+import { AiHealthCard } from './ai-health-card';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -69,6 +70,10 @@ export default async function Dashboard() {
         <StatCard label="Approved (7d)" value={weekStats?.approved ?? 0} />
         <StatCard label="Live listings (7d)" value={weekStats?.live ?? 0} />
         <StatCard label="Today" value={`${todayStats?.count ?? 0} / $${((todayStats?.spent ?? 0) / 100).toFixed(2)}`} />
+      </section>
+
+      <section>
+        <AiHealthCard />
       </section>
 
       {publishQueue.length > 0 && (

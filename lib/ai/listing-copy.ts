@@ -1,7 +1,7 @@
 import { geminiJSON, MODEL } from './gemini';
 import { listingCopySchema, type ListingCopy } from '@/lib/etsy/validators';
 
-export type DraftResult = ListingCopy & { source: 'gemini' | 'fallback' };
+export type DraftResult = ListingCopy & { source: 'gemini' | 'groq' | 'fallback' };
 
 const SYSTEM = `You write Etsy-optimized listing copy for print-on-demand t-shirts.
 
@@ -90,7 +90,7 @@ export function sanitizeDescription(raw: unknown): string {
 
 export async function draftListingCopy(input: { slogan: string }): Promise<DraftResult> {
   try {
-    const { parsed } = await geminiJSON<{ title?: unknown; tags?: unknown; description?: unknown }>({
+    const { parsed, provider } = await geminiJSON<{ title?: unknown; tags?: unknown; description?: unknown }>({
       system: SYSTEM,
       user: `Slogan: ${input.slogan}`,
       model: MODEL,
@@ -108,7 +108,7 @@ export async function draftListingCopy(input: { slogan: string }): Promise<Draft
 
     const validated = listingCopySchema.safeParse(cleaned);
     if (validated.success) {
-      return { ...validated.data, source: 'gemini' };
+      return { ...validated.data, source: provider ?? 'gemini' };
     }
   } catch {
     /* fallthrough to fallback */

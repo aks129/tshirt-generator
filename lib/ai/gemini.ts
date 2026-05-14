@@ -1,5 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
-import { groqJSON } from './groq';
+import { groqJSON, GROQ_MODEL } from './groq';
+import { logAiCall, classifyError, type AiProvider } from './log';
 
 let client: GoogleGenAI | null = null;
 
@@ -47,12 +48,14 @@ export async function geminiJSON<T>(opts: {
   user: string;
   maxTokens?: number;
   model?: string;
-}): Promise<{ raw: string; parsed: T }> {
+}): Promise<{ raw: string; parsed: T; provider: AiProvider }> {
+  const geminiStart = Date.now();
+  const geminiModel = opts.model ?? MODEL;
   try {
-    return await withRetry(async () => {
+    const out = await withRetry(async () => {
       const ai = getGemini();
       const resp = await ai.models.generateContent({
-        model: opts.model ?? MODEL,
+        model: geminiModel,
         contents: opts.user,
         config: {
           systemInstruction: opts.system,
@@ -64,20 +67,41 @@ export async function geminiJSON<T>(opts: {
       const parsed = JSON.parse(text) as T;
       return { raw: text, parsed };
     });
+    await logAiCall({
+      provider: 'gemini', model: geminiModel,
+      durationMs: Date.now() - geminiStart, ok: true, call: 'json',
+    });
+    return { ...out, provider: 'gemini' };
   } catch (err) {
-    // Fall back to Groq for transient Gemini failures (rate limit, 5xx,
-    // network errors). Only fires if GROQ_API_KEY is configured. Schema
-    // validation / 4xx errors aren't transient and bubble up as-is.
+    const geminiDuration = Date.now() - geminiStart;
+    const errorClass = classifyError(err);
+    await logAiCall({
+      provider: 'gemini', model: geminiModel,
+      durationMs: geminiDuration, ok: false, errorClass, call: 'json',
+    });
+
+    // Fall back to Groq for transient Gemini failures only. Schema /
+    // 4xx errors bubble up as-is.
     if (process.env.GROQ_API_KEY && isTransientGeminiError(err)) {
+      const groqStart = Date.now();
       try {
-        return await groqJSON<T>({
+        const out = await groqJSON<T>({
           system: opts.system,
           user: opts.user,
           maxTokens: opts.maxTokens,
         });
-      } catch {
-        /* Groq also failed — rethrow original Gemini error so logs reflect
-           the real cause; Groq is a best-effort backup. */
+        await logAiCall({
+          provider: 'groq', model: GROQ_MODEL,
+          durationMs: Date.now() - groqStart, ok: true, call: 'json',
+        });
+        return { ...out, provider: 'groq' };
+      } catch (groqErr) {
+        await logAiCall({
+          provider: 'groq', model: GROQ_MODEL,
+          durationMs: Date.now() - groqStart, ok: false,
+          errorClass: classifyError(groqErr), call: 'json',
+        });
+        /* fallthrough — rethrow original Gemini error */
       }
     }
     throw err;
