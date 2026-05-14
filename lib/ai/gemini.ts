@@ -1,4 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
+import { groqJSON } from './groq';
 
 let client: GoogleGenAI | null = null;
 
@@ -36,27 +37,51 @@ async function withRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
   throw lastErr;
 }
 
+function isTransientGeminiError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /\b(429|5\d\d|RESOURCE_EXHAUSTED|quota|rate|UNAVAILABLE|fetch failed|network|timeout|aborted|ECONNRESET|ETIMEDOUT)\b/i.test(msg);
+}
+
 export async function geminiJSON<T>(opts: {
   system: string;
   user: string;
   maxTokens?: number;
   model?: string;
 }): Promise<{ raw: string; parsed: T }> {
-  return withRetry(async () => {
-    const ai = getGemini();
-    const resp = await ai.models.generateContent({
-      model: opts.model ?? MODEL,
-      contents: opts.user,
-      config: {
-        systemInstruction: opts.system,
-        responseMimeType: 'application/json',
-        maxOutputTokens: opts.maxTokens ?? 4096,
-      },
+  try {
+    return await withRetry(async () => {
+      const ai = getGemini();
+      const resp = await ai.models.generateContent({
+        model: opts.model ?? MODEL,
+        contents: opts.user,
+        config: {
+          systemInstruction: opts.system,
+          responseMimeType: 'application/json',
+          maxOutputTokens: opts.maxTokens ?? 4096,
+        },
+      });
+      const text = resp.text ?? '';
+      const parsed = JSON.parse(text) as T;
+      return { raw: text, parsed };
     });
-    const text = resp.text ?? '';
-    const parsed = JSON.parse(text) as T;
-    return { raw: text, parsed };
-  });
+  } catch (err) {
+    // Fall back to Groq for transient Gemini failures (rate limit, 5xx,
+    // network errors). Only fires if GROQ_API_KEY is configured. Schema
+    // validation / 4xx errors aren't transient and bubble up as-is.
+    if (process.env.GROQ_API_KEY && isTransientGeminiError(err)) {
+      try {
+        return await groqJSON<T>({
+          system: opts.system,
+          user: opts.user,
+          maxTokens: opts.maxTokens,
+        });
+      } catch {
+        /* Groq also failed — rethrow original Gemini error so logs reflect
+           the real cause; Groq is a best-effort backup. */
+      }
+    }
+    throw err;
+  }
 }
 
 export async function geminiText(opts: {
