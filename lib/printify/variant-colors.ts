@@ -23,7 +23,7 @@ export async function fetchConfiguredColors(opts: {
   providerId: number;
   variantIds: number[];
 }): Promise<Set<MockupBase['color']>> {
-  const token = process.env.PRINTIFY_API_TOKEN;
+  const token = process.env.PRINTIFY_API_KEY;
   if (!token) return new Set();
 
   const url = `https://api.printify.com/v1/catalog/blueprints/${opts.blueprintId}/print_providers/${opts.providerId}/variants.json`;
