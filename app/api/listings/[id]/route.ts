@@ -42,13 +42,9 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   const { id } = await params;
   const row = await db.query.listings.findFirst({ where: eq(listings.id, id) });
   if (!row) return NextResponse.json({ ok: false, error: 'Not found' }, { status: 404 });
-  if (row.status === 'live') {
-    return NextResponse.json(
-      { ok: false, error: 'Live listings cannot be deleted from here. Remove from Etsy first.' },
-      { status: 409 },
-    );
-  }
 
+  // Allow live deletes — the UI confirms the caller knows it won't unlist
+  // from Etsy. Best-effort Printify delete will 404 cleanly if already gone.
   let printifyDeleted = false;
   let printifyError: string | null = null;
   if (row.printifyProductId) {
@@ -63,5 +59,5 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   // Reset the design to 'approved' so it can be re-published.
   await db.update(designs).set({ status: 'approved' }).where(eq(designs.id, row.designId));
 
-  return NextResponse.json({ ok: true, printifyDeleted, printifyError });
+  return NextResponse.json({ ok: true, printifyDeleted, printifyError, wasLive: row.status === 'live' });
 }

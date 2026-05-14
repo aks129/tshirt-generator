@@ -37,8 +37,11 @@ export function ListingsTable({ rows }: { rows: Row[] }) {
       ? visible.filter((r) => r.status === 'publishing' || r.status === 'publishing_slow')
       : visible.filter((r) => r.status === filter);
 
-  async function deleteListing(id: string) {
-    if (!confirm('Delete this pending listing? It will also be removed from Printify (if present).')) return;
+  async function deleteListing(id: string, status: Row['status']) {
+    const msg = status === 'live'
+      ? 'Delete this LIVE listing from your app? The Printify product will be deleted, but the Etsy listing itself will NOT be removed automatically — you must unlist it from Etsy manually.'
+      : 'Delete this listing? Any Printify product will also be removed.';
+    if (!confirm(msg)) return;
     setDeletingId(id);
     try {
       const res = await fetch(`/api/listings/${id}`, { method: 'DELETE' });
@@ -257,17 +260,16 @@ export function ListingsTable({ rows }: { rows: Row[] }) {
                           {retryingId === r.id ? 'Retrying…' : 'Retry'}
                         </button>
                       )}
-                      {r.status !== 'live' && (
-                        <button
-                          type="button"
-                          aria-label="Delete listing"
-                          disabled={deletingId === r.id}
-                          onClick={() => deleteListing(r.id)}
-                          className="rounded p-1 text-zinc-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
-                        >
-                          {deletingId === r.id ? '…' : '🗑'}
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        aria-label="Delete listing"
+                        disabled={deletingId === r.id}
+                        onClick={() => deleteListing(r.id, r.status)}
+                        className="rounded p-1 text-zinc-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                        title={r.status === 'live' ? 'Delete — does NOT unlist from Etsy' : 'Delete listing'}
+                      >
+                        {deletingId === r.id ? '…' : '🗑'}
+                      </button>
                     </div>
                   </td>
                 </tr>

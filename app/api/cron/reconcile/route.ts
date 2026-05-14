@@ -3,6 +3,7 @@ import { and, eq, gt, isNotNull, isNull, lt, or } from 'drizzle-orm';
 import { db } from '@/lib/db/client';
 import { listings, designs } from '@/lib/db/schema';
 import { getProduct } from '@/lib/printify/get-product';
+import { PrintifyError } from '@/lib/printify/client';
 import { logEvent } from '@/lib/events';
 import { processListingPhotos } from '@/lib/mockups/process-listing';
 
@@ -66,6 +67,37 @@ export async function GET(req: Request) {
     }
   }
 
+  // External-deletion check: any live listing whose Printify product no
+  // longer exists (404) gets flipped to 'failed'. Common cause: operator
+  // deleted the product in Printify or unpublished it from Etsy directly.
+  const liveListings = await db
+    .select()
+    .from(listings)
+    .where(and(eq(listings.status, 'live'), isNotNull(listings.printifyProductId)));
+
+  let externallyDeleted = 0;
+  for (const l of liveListings) {
+    if (!l.printifyProductId) continue;
+    try {
+      await getProduct(l.printifyProductId);
+    } catch (err) {
+      if (err instanceof PrintifyError && err.status === 404) {
+        await db
+          .update(listings)
+          .set({ status: 'failed', failureReason: 'Removed from Printify externally' })
+          .where(eq(listings.id, l.id));
+        await db.update(designs).set({ status: 'failed' }).where(eq(designs.id, l.designId));
+        await logEvent({
+          type: 'publish_failed',
+          designId: l.designId,
+          payload: { kind: 'external_delete', source: 'printify_404' },
+        });
+        externallyDeleted++;
+      }
+      // Other errors (5xx, network) — leave as live, will retry next cron.
+    }
+  }
+
   // Photos backfill pass — any live listing without photos, < 7 days old.
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const pendingPhotos = await db
@@ -103,6 +135,7 @@ export async function GET(req: Request) {
       scanned: stuck.length,
       reconciled,
       failed,
+      externallyDeleted,
       photosUploaded,
       photosSkipped,
     },
@@ -113,6 +146,7 @@ export async function GET(req: Request) {
     scanned: stuck.length,
     reconciled,
     failed,
+    externallyDeleted,
     photosUploaded,
     photosSkipped,
   });
