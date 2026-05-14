@@ -2,6 +2,7 @@ import { db } from '@/lib/db/client';
 import { listings, designs } from '@/lib/db/schema';
 import { desc, eq } from 'drizzle-orm';
 import { ListingsTable } from './listings-table';
+import { SyncButton } from './sync-button';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,7 +30,10 @@ export default async function ListingsPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Listings</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">Listings</h1>
+        <SyncButton />
+      </div>
       <ListingsTable rows={rows} />
     </div>
   );
