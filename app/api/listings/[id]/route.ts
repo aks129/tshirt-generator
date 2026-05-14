@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db/client';
-import { listings } from '@/lib/db/schema';
+import { listings, designs } from '@/lib/db/schema';
 import { getProduct } from '@/lib/printify/get-product';
+import { deletePrintifyProduct } from '@/lib/printify/delete-product';
 
 export const runtime = 'nodejs';
 
@@ -35,4 +36,32 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   }
 
   return NextResponse.json({ ok: true, listing: row });
+}
+
+export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const row = await db.query.listings.findFirst({ where: eq(listings.id, id) });
+  if (!row) return NextResponse.json({ ok: false, error: 'Not found' }, { status: 404 });
+  if (row.status === 'live') {
+    return NextResponse.json(
+      { ok: false, error: 'Live listings cannot be deleted from here. Remove from Etsy first.' },
+      { status: 409 },
+    );
+  }
+
+  let printifyDeleted = false;
+  let printifyError: string | null = null;
+  if (row.printifyProductId) {
+    try {
+      printifyDeleted = await deletePrintifyProduct(row.printifyProductId);
+    } catch (err) {
+      printifyError = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  await db.delete(listings).where(eq(listings.id, id));
+  // Reset the design to 'approved' so it can be re-published.
+  await db.update(designs).set({ status: 'approved' }).where(eq(designs.id, row.designId));
+
+  return NextResponse.json({ ok: true, printifyDeleted, printifyError });
 }

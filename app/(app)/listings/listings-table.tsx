@@ -27,12 +27,31 @@ type Filter = (typeof STATUSES)[number];
 export function ListingsTable({ rows }: { rows: Row[] }) {
   const [filter, setFilter] = useState<Filter>('all');
   const [retryingId, setRetryingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
 
+  const visible = rows.filter((r) => !hiddenIds.has(r.id));
   const filtered = filter === 'all'
-    ? rows
+    ? visible
     : filter === 'publishing'
-      ? rows.filter((r) => r.status === 'publishing' || r.status === 'publishing_slow')
-      : rows.filter((r) => r.status === filter);
+      ? visible.filter((r) => r.status === 'publishing' || r.status === 'publishing_slow')
+      : visible.filter((r) => r.status === filter);
+
+  async function deleteListing(id: string) {
+    if (!confirm('Delete this pending listing? It will also be removed from Printify (if present).')) return;
+    setDeletingId(id);
+    try {
+      const res = await fetch(`/api/listings/${id}`, { method: 'DELETE' });
+      const j = await res.json();
+      if (!j.ok) {
+        alert(j.error || 'Delete failed');
+        return;
+      }
+      setHiddenIds((s) => new Set(s).add(id));
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   async function uploadPhotos(id: string) {
     setRetryingId(id);
@@ -180,16 +199,29 @@ export function ListingsTable({ rows }: { rows: Row[] }) {
                     {new Date(r.createdAt).toLocaleString()}
                   </td>
                   <td className="px-3 py-2 text-right">
-                    {r.status === 'failed' && (
-                      <button
-                        type="button"
-                        disabled={retryingId === r.id}
-                        onClick={() => retry(r.id)}
-                        className="rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-50"
-                      >
-                        {retryingId === r.id ? 'Retrying…' : 'Retry'}
-                      </button>
-                    )}
+                    <div className="flex items-center justify-end gap-2">
+                      {r.status === 'failed' && (
+                        <button
+                          type="button"
+                          disabled={retryingId === r.id}
+                          onClick={() => retry(r.id)}
+                          className="rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-50"
+                        >
+                          {retryingId === r.id ? 'Retrying…' : 'Retry'}
+                        </button>
+                      )}
+                      {r.status !== 'live' && (
+                        <button
+                          type="button"
+                          aria-label="Delete listing"
+                          disabled={deletingId === r.id}
+                          onClick={() => deleteListing(r.id)}
+                          className="rounded p-1 text-zinc-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                        >
+                          {deletingId === r.id ? '…' : '🗑'}
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               );

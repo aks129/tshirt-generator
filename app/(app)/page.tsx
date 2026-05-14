@@ -3,6 +3,7 @@ import { db } from '@/lib/db/client';
 import { batches, designs, listings } from '@/lib/db/schema';
 import { desc, sql, gte, eq, or } from 'drizzle-orm';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { RecentBatches } from './recent-batches';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -93,15 +94,7 @@ export default async function Dashboard() {
         <Card>
           <CardContent className="p-0">
             <ul className="divide-y">
-              {recent.map((b) => (
-                <li key={b.id}>
-                  <Link href={`/batches/${b.id}`} className="flex items-center justify-between px-4 py-3 hover:bg-zinc-50">
-                    <span className="truncate">{b.prompt}</span>
-                    <span className="text-xs text-zinc-500">{b.status}</span>
-                  </Link>
-                </li>
-              ))}
-              {recent.length === 0 && <li className="px-4 py-6 text-sm text-zinc-500">No batches yet.</li>}
+              <RecentBatches rows={recent.map((b) => ({ id: b.id, prompt: b.prompt, status: b.status }))} />
             </ul>
           </CardContent>
         </Card>
