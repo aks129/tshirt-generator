@@ -39,6 +39,16 @@ const PROMPTS = [
     prompt:
       'A plain heather grey unisex t-shirt loosely folded in a stack, top-down view, soft natural background, no design, no graphic, no print, blank tee, product photography, high resolution',
   },
+  {
+    id: 7,
+    prompt:
+      'A confident young woman in her twenties wearing a plain white t-shirt and high-waisted jeans, standing outdoors in a sunlit park, mid-shot front view, natural soft light, smiling slightly, casual lifestyle photography, no graphic on shirt, no print, blank tee, high resolution',
+  },
+  {
+    id: 8,
+    prompt:
+      'A stylish young woman in her late twenties wearing a plain black t-shirt, mid-shot front view, modern minimalist studio background, soft directional light, calm expression, lifestyle portrait, no graphic on shirt, no print, blank tee, high resolution',
+  },
 ];
 
 async function main() {

@@ -11,6 +11,11 @@ export type ComposeInput = {
   designBuffer: Buffer;
 };
 
+// Anything in this set gets a white-text variant of the design (inverted RGB,
+// alpha preserved) composited with default 'over' blend. Everything else is
+// treated as a light shirt and gets the original black design via 'multiply'.
+const DARK_SHIRT_COLORS = new Set(['black', 'navy', 'charcoal']);
+
 export async function composeMockup(input: ComposeInput): Promise<Buffer> {
   const baseBuffer = input.baseBuffer
     ?? (await readFile(join(process.cwd(), 'public', input.base.file.replace(/^\//, ''))));
@@ -26,19 +31,25 @@ export async function composeMockup(input: ComposeInput): Promise<Buffer> {
       background: { r: 0, g: 0, b: 0, alpha: 0 },
     });
   }
-  const designLayer = await resized.png().toBuffer();
 
-  const blend: 'multiply' | 'screen' = color === 'white' ? 'multiply' : 'screen';
+  const isDarkShirt = DARK_SHIRT_COLORS.has(color);
+  // On dark shirts, invert RGB so black text becomes white text (preserving
+  // alpha for transparent regions). Then a normal over-composite paints white
+  // text on the dark shirt. On light/heather shirts, keep the original black
+  // design and use multiply so the black text shows clean.
+  const designLayer = isDarkShirt
+    ? await resized.negate({ alpha: false }).png().toBuffer()
+    : await resized.png().toBuffer();
+
+  const composite: sharp.OverlayOptions = {
+    input: designLayer,
+    top: printArea.y,
+    left: printArea.x,
+  };
+  if (!isDarkShirt) composite.blend = 'multiply';
 
   return sharp(baseBuffer)
-    .composite([
-      {
-        input: designLayer,
-        top: printArea.y,
-        left: printArea.x,
-        blend,
-      },
-    ])
+    .composite([composite])
     .jpeg({ quality: 85, mozjpeg: true })
     .toBuffer();
 }

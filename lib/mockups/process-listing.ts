@@ -6,6 +6,7 @@ import { EtsyAuthExpired, EtsyAuthNotConnected, EtsyUploadError } from '@/lib/et
 import { composeFromBlobUrl } from '@/lib/mockups/compose';
 import { uploadEtsyListingImage } from '@/lib/mockups/upload-to-etsy';
 import { MOCKUP_BASES } from '@/public/mockup-bases/manifest';
+import { fetchConfiguredColors } from '@/lib/printify/variant-colors';
 import { logEvent } from '@/lib/events';
 import type { Concept } from '@/lib/schemas';
 
@@ -43,10 +44,26 @@ export async function processListingPhotos(
   const shopId = s?.etsyShopIdOauth;
   if (!shopId) return { ok: false, errorCode: 'NO_SHOP', status: 400, message: 'No Etsy shop on connected account' };
 
+  // Filter mockup bases to only colors the operator actually sells, so we
+  // don't upload e.g. black-tee mockups for a white-only product.
+  let basesToCompose = MOCKUP_BASES;
+  if (s.defaultPrintifyBlueprintId && s.defaultPrintProviderId && s.defaultVariants) {
+    const variantIds = (s.defaultVariants as { variantIds?: number[] }).variantIds ?? [];
+    const configuredColors = await fetchConfiguredColors({
+      blueprintId: s.defaultPrintifyBlueprintId,
+      providerId: s.defaultPrintProviderId,
+      variantIds,
+    });
+    if (configuredColors.size > 0) {
+      const filtered = MOCKUP_BASES.filter((b) => configuredColors.has(b.color));
+      if (filtered.length > 0) basesToCompose = filtered;
+    }
+  }
+
   const sloganBase = (design.concept as Concept).headline.replace(/[^\w\s-]+/g, '').trim().slice(0, 60);
 
   const composites = await Promise.all(
-    MOCKUP_BASES.map(async (base) => ({
+    basesToCompose.map(async (base) => ({
       base,
       buffer: await composeFromBlobUrl({ base, designBlobUrl: design.imageBlobUrl! }),
     })),
@@ -104,7 +121,7 @@ export async function processListingPhotos(
     type: uploaded > 0 ? 'generated' : 'publish_failed',
     designId: listing.designId,
     batchId: design.batchId,
-    payload: { kind: 'mockups_uploaded', count: uploaded, total: MOCKUP_BASES.length, failures },
+    payload: { kind: 'mockups_uploaded', count: uploaded, total: basesToCompose.length, failures },
   });
 
   return { ok: true, uploadedCount: uploaded, failures };
