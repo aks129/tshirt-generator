@@ -53,6 +53,29 @@ export function ListingsTable({ rows }: { rows: Row[] }) {
     }
   }
 
+  async function generateCustom(id: string) {
+    if (!confirm('Generate 3 custom AI mockups for this listing? Uses ~$0.12 in Recraft credits and takes 20-40 seconds.')) return;
+    setRetryingId(id);
+    try {
+      const res = await fetch(`/api/listings/${id}/custom-mockups`, { method: 'POST' });
+      const text = await res.text();
+      if (!text) {
+        alert('Server timed out. Refresh to see if photos were uploaded.');
+      } else {
+        try {
+          const j = JSON.parse(text);
+          if (!j.ok) alert(j.error || 'Custom mockup generation failed');
+          else alert(`Uploaded ${j.uploadedCount}/${j.total} custom mockups.${j.failures ? '\n\nFailures:\n' + j.failures.join('\n') : ''}`);
+        } catch {
+          alert(`Unexpected response (${res.status})`);
+        }
+      }
+      window.location.reload();
+    } finally {
+      setRetryingId(null);
+    }
+  }
+
   async function uploadPhotos(id: string) {
     setRetryingId(id);
     try {
@@ -156,18 +179,42 @@ export function ListingsTable({ rows }: { rows: Row[] }) {
                   </td>
                   <td className="px-3 py-2 text-sm">
                     {r.photosUploadedAt ? (
-                      <span className={r.photosCount === 6 ? 'text-emerald-700' : 'text-amber-700'}>
-                        ✓ {r.photosCount} photos
-                      </span>
+                      <div className="flex flex-col gap-1">
+                        <span className={r.photosCount === 6 ? 'text-emerald-700' : 'text-amber-700'}>
+                          ✓ {r.photosCount} photos
+                        </span>
+                        {r.status === 'live' && (
+                          <button
+                            type="button"
+                            disabled={retryingId === r.id}
+                            onClick={() => generateCustom(r.id)}
+                            className="rounded border border-violet-300 bg-violet-50 px-2 py-1 text-[10px] text-violet-700 hover:bg-violet-100"
+                            title="Generate 3 AI-unique mockups (~$0.12)"
+                          >
+                            {retryingId === r.id ? 'Generating…' : '✨ AI custom'}
+                          </button>
+                        )}
+                      </div>
                     ) : r.status === 'live' ? (
-                      <button
-                        type="button"
-                        disabled={retryingId === r.id}
-                        onClick={() => uploadPhotos(r.id)}
-                        className="rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-50"
-                      >
-                        {retryingId === r.id ? 'Uploading…' : '↑ Add photos'}
-                      </button>
+                      <div className="flex flex-col gap-1">
+                        <button
+                          type="button"
+                          disabled={retryingId === r.id}
+                          onClick={() => uploadPhotos(r.id)}
+                          className="rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-50"
+                        >
+                          {retryingId === r.id ? 'Uploading…' : '↑ Add photos'}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={retryingId === r.id}
+                          onClick={() => generateCustom(r.id)}
+                          className="rounded border border-violet-300 bg-violet-50 px-2 py-1 text-[10px] text-violet-700 hover:bg-violet-100"
+                          title="Generate 3 AI-unique mockups (~$0.12)"
+                        >
+                          {retryingId === r.id ? 'Generating…' : '✨ AI custom'}
+                        </button>
+                      </div>
                     ) : (
                       <span className="text-xs text-zinc-400">—</span>
                     )}
