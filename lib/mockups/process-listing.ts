@@ -45,9 +45,10 @@ export async function processListingPhotos(
   const shopId = s?.etsyShopIdOauth;
   if (!shopId) return { ok: false, errorCode: 'NO_SHOP', status: 400, message: 'No Etsy shop on connected account' };
 
+  const preferredLabels = (s.mockupSelection as { labels?: string[] } | null)?.labels;
   let mockups: PrintifyMockup[];
   try {
-    mockups = await fetchPrintifyMockups(listing.printifyProductId);
+    mockups = await fetchPrintifyMockups(listing.printifyProductId, { preferredLabels });
   } catch (err) {
     return { ok: false, errorCode: 'PRINTIFY_FETCH_FAILED', status: 502, message: err instanceof Error ? err.message : String(err) };
   }

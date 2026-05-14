@@ -16,6 +16,10 @@ const bodySchema = z.object({
   killSwitchActive: z.boolean(),
   priceOffsetCents: z.number().int().min(0),
   minPriceFloorCents: z.number().int().min(500),
+  mockupSelection: z
+    .object({ labels: z.array(z.string().min(1).max(64)).max(9) })
+    .nullable()
+    .optional(),
 });
 
 export async function PUT(req: Request) {

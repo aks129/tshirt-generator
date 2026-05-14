@@ -92,6 +92,7 @@ export const settings = pgTable('settings', {
   etsyAccessToken: text('etsy_access_token'),
   etsyRefreshToken: text('etsy_refresh_token'),
   etsyTokenExpiresAt: timestamp('etsy_token_expires_at', { withTimezone: true }),
+  mockupSelection: jsonb('mockup_selection'),
 });
 
 export const generationEvents = pgTable('generation_events', {

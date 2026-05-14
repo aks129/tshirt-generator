@@ -32,6 +32,10 @@ export function SettingsForm({ initialSettings }: { initialSettings: Settings | 
   );
   const [etsyConnecting, setEtsyConnecting] = useState(false);
   const [etsyDisconnecting, setEtsyDisconnecting] = useState(false);
+  const [availableLabels, setAvailableLabels] = useState<string[]>([]);
+  const [selectedLabels, setSelectedLabels] = useState<string[]>(
+    (initialSettings?.mockupSelection as { labels?: string[] } | null)?.labels ?? [],
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -44,6 +48,11 @@ export function SettingsForm({ initialSettings }: { initialSettings: Settings | 
           setBlueprints(j.blueprints);
           setProviders(j.providers);
         }
+      });
+    fetch('/api/mockups/available')
+      .then((r) => r.json())
+      .then((j) => {
+        if (j.ok && Array.isArray(j.labels)) setAvailableLabels(j.labels);
       });
   }, []);
 
@@ -64,6 +73,25 @@ export function SettingsForm({ initialSettings }: { initialSettings: Settings | 
     if (next.has(id)) next.delete(id);
     else next.add(id);
     setSelectedVariantIds(next);
+  }
+
+  function addMockupLabel(label: string) {
+    if (selectedLabels.includes(label)) return;
+    if (selectedLabels.length >= 9) return;
+    setSelectedLabels([...selectedLabels, label]);
+  }
+
+  function removeMockupLabel(label: string) {
+    setSelectedLabels(selectedLabels.filter((l) => l !== label));
+  }
+
+  function moveMockupLabel(label: string, direction: -1 | 1) {
+    const i = selectedLabels.indexOf(label);
+    const j = i + direction;
+    if (i < 0 || j < 0 || j >= selectedLabels.length) return;
+    const next = [...selectedLabels];
+    [next[i], next[j]] = [next[j], next[i]];
+    setSelectedLabels(next);
   }
 
   async function connectEtsy() {
@@ -113,6 +141,7 @@ export function SettingsForm({ initialSettings }: { initialSettings: Settings | 
           killSwitchActive: killSwitch,
           priceOffsetCents,
           minPriceFloorCents,
+          mockupSelection: selectedLabels.length > 0 ? { labels: selectedLabels } : null,
         }),
       });
       const j = await res.json();
@@ -238,6 +267,84 @@ export function SettingsForm({ initialSettings }: { initialSettings: Settings | 
               </div>
             </div>
           )}
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-zinc-200 bg-white p-5">
+        <h2 className="mb-1 text-base font-bold">Mockup photos</h2>
+        <p className="mb-3 text-xs text-zinc-500">
+          Pick up to 9 Printify mockups to auto-upload to Etsy after publish. Order = upload order. If left empty, a sensible default is used.
+        </p>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-600">
+              Available ({availableLabels.length})
+            </div>
+            <div className="max-h-72 space-y-1 overflow-y-auto rounded-md border border-zinc-200 bg-zinc-50 p-2">
+              {availableLabels.length === 0 && (
+                <p className="text-xs text-zinc-400">Loading…</p>
+              )}
+              {availableLabels.map((label) => {
+                const picked = selectedLabels.includes(label);
+                const full = selectedLabels.length >= 9;
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => addMockupLabel(label)}
+                    disabled={picked || full}
+                    className={
+                      'flex w-full items-center justify-between rounded px-2 py-1 text-left text-xs ' +
+                      (picked
+                        ? 'cursor-not-allowed bg-zinc-200 text-zinc-400'
+                        : full
+                          ? 'cursor-not-allowed text-zinc-400'
+                          : 'bg-white text-zinc-800 hover:bg-zinc-100')
+                    }
+                  >
+                    <span>{label}</span>
+                    <span className="text-[10px] text-zinc-400">{picked ? '✓ added' : full ? 'full' : '+ add'}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div>
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-600">
+              Selected ({selectedLabels.length}/9)
+            </div>
+            <div className="max-h-72 space-y-1 overflow-y-auto rounded-md border border-zinc-200 bg-zinc-50 p-2">
+              {selectedLabels.length === 0 && (
+                <p className="text-xs text-zinc-400">None selected — defaults will be used.</p>
+              )}
+              {selectedLabels.map((label, i) => (
+                <div key={label} className="flex items-center gap-1 rounded bg-white px-2 py-1 text-xs">
+                  <span className="w-4 text-right text-zinc-400">{i + 1}.</span>
+                  <span className="flex-1">{label}</span>
+                  <button
+                    type="button"
+                    onClick={() => moveMockupLabel(label, -1)}
+                    disabled={i === 0}
+                    aria-label="Move up"
+                    className="rounded px-1 text-zinc-500 hover:bg-zinc-100 disabled:opacity-30"
+                  >↑</button>
+                  <button
+                    type="button"
+                    onClick={() => moveMockupLabel(label, 1)}
+                    disabled={i === selectedLabels.length - 1}
+                    aria-label="Move down"
+                    className="rounded px-1 text-zinc-500 hover:bg-zinc-100 disabled:opacity-30"
+                  >↓</button>
+                  <button
+                    type="button"
+                    onClick={() => removeMockupLabel(label)}
+                    aria-label="Remove"
+                    className="rounded px-1 text-zinc-500 hover:bg-red-50 hover:text-red-600"
+                  >✕</button>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </section>
 

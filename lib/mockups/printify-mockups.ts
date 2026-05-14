@@ -10,11 +10,10 @@ export type PrintifyMockup = {
   position: string;
 };
 
-// Priority order for which mockups to upload when we're capped at 9 extras.
+// Default priority order when the operator hasn't configured a custom selection.
 // Mix of human models, lifestyle, and the size chart (which Etsy buyers ask
-// for constantly). Anything in this list comes first; anything not listed but
-// present on the product comes after, in Printify's natural order.
-const PREFERRED_LABELS = [
+// for constantly).
+const DEFAULT_PREFERRED_LABELS = [
   'person-1',
   'person-2',
   'person-3',
@@ -33,7 +32,9 @@ function extractCameraLabel(src: string): string {
   return m ? decodeURIComponent(m[1]) : '';
 }
 
-export async function fetchPrintifyMockups(productId: string): Promise<PrintifyMockup[]> {
+async function fetchProduct(productId: string): Promise<{
+  images: Array<{ src: string; position?: string; is_selected_for_publishing?: boolean }>;
+}> {
   const shopId = process.env.PRINTIFY_SHOP_ID;
   const apiKey = process.env.PRINTIFY_API_KEY;
   if (!shopId || !apiKey) throw new Error('PRINTIFY_SHOP_ID / PRINTIFY_API_KEY not set');
@@ -46,9 +47,34 @@ export async function fetchPrintifyMockups(productId: string): Promise<PrintifyM
     const text = await resp.text().catch(() => '');
     throw new Error(`Printify GET product failed ${resp.status}: ${text.slice(0, 200)}`);
   }
-  const j = (await resp.json()) as {
-    images?: Array<{ src: string; position?: string; is_selected_for_publishing?: boolean }>;
+  return (await resp.json()) as {
+    images: Array<{ src: string; position?: string; is_selected_for_publishing?: boolean }>;
   };
+}
+
+/** Returns just the camera_labels (deduplicated, original order) for a product.
+ *  Used by the settings UI to show what's available to pick. */
+export async function fetchAllPrintifyImageLabels(productId: string): Promise<string[]> {
+  const j = await fetchProduct(productId);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const img of j.images ?? []) {
+    const label = extractCameraLabel(img.src);
+    if (!label || seen.has(label)) continue;
+    seen.add(label);
+    out.push(label);
+  }
+  return out;
+}
+
+/** Returns up to 9 mockups to upload, ordered by `preferredLabels` (if given)
+ *  or the default priority list. Skips position='front' since Printify already
+ *  publishes that one to Etsy as the listing's primary photo. */
+export async function fetchPrintifyMockups(
+  productId: string,
+  opts: { preferredLabels?: string[] } = {},
+): Promise<PrintifyMockup[]> {
+  const j = await fetchProduct(productId);
 
   const all: PrintifyMockup[] = (j.images ?? [])
     .filter((i) => i.is_selected_for_publishing !== false)
@@ -58,24 +84,31 @@ export async function fetchPrintifyMockups(productId: string): Promise<PrintifyM
       position: i.position ?? 'other',
     }));
 
-  // Skip the 'front' position — Printify auto-publishes that one to Etsy
-  // already, so uploading it would create a duplicate.
+  // Skip 'front' position — Printify auto-publishes that one to Etsy already.
   const eligible = all.filter((m) => m.position !== 'front');
 
-  // Sort by PREFERRED_LABELS order; unlisted labels keep their natural order
-  // after all preferred ones.
+  const preferred = opts.preferredLabels && opts.preferredLabels.length > 0
+    ? opts.preferredLabels
+    : DEFAULT_PREFERRED_LABELS;
+
+  // Sort by preferred order; unlisted labels keep their natural order after.
   const byLabel = new Map<string, PrintifyMockup>();
   for (const m of eligible) byLabel.set(m.cameraLabel, m);
 
   const ordered: PrintifyMockup[] = [];
-  for (const label of PREFERRED_LABELS) {
+  for (const label of preferred) {
     const m = byLabel.get(label);
     if (m) {
       ordered.push(m);
       byLabel.delete(label);
     }
   }
-  for (const m of byLabel.values()) ordered.push(m);
+  // If the operator's preferred list is shorter than 9, fill from the rest.
+  if (opts.preferredLabels && opts.preferredLabels.length > 0) {
+    // explicit selection — don't backfill with anything not chosen
+  } else {
+    for (const m of byLabel.values()) ordered.push(m);
+  }
 
   return ordered.slice(0, MAX_EXTRA_PHOTOS);
 }
