@@ -6,7 +6,17 @@ export type RenderSettings = {
   textColor: string;
   hAlign: 'left' | 'center' | 'right';
   vAlign: 'top' | 'middle' | 'bottom';
+  /** Slider value 10-48 from the bulk generator. The renderer multiplies
+   *  this by SIZE_SCALE to get a target print-pixel size, then scales down
+   *  only if the text wouldn't fit. Optional for back-compat; defaults to
+   *  auto-fit-from-large behavior when omitted. */
+  fontSize?: number;
 };
+
+// Slider value × this = target print-pixel size. Derived from the
+// preview design area (124px wide) vs the print usable width (2800px),
+// which gives ~22.6×. Rounded up to 24 for a cleaner small-text floor.
+const SIZE_SCALE = 24;
 
 function wrapTextLines(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
   const lines: string[] = [];
@@ -49,7 +59,13 @@ export async function renderRowToBlob(text: string, settings: RenderSettings): P
   const padding = 100;
   const maxW = PRINT_W - padding * 2;
   const maxH = PRINT_H - padding * 2;
-  let fontSize = 600;
+
+  // Start from the user-chosen size (if supplied) and only scale DOWN if
+  // the text won't fit at that size. Without a fontSize, fall back to the
+  // old behavior: start huge, scale down to fit.
+  let fontSize = settings.fontSize != null
+    ? Math.max(40, settings.fontSize * SIZE_SCALE)
+    : 600;
   let lines: string[] = [];
   while (fontSize > 40) {
     ctx.font = `bold ${fontSize}px ${settings.font}`;

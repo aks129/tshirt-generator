@@ -23,7 +23,33 @@ type Settings = RenderSettings & {
   shirtColor: string;
 };
 
-const DEFAULT_FONT = BUILT_IN_FONTS[7]; // Archivo Black
+// Special Elite — typewriter feel that reads cleanly at thumbnail size.
+// Anchors as the default until the user picks something else; localStorage
+// then takes over on subsequent visits.
+const DEFAULT_FONT = BUILT_IN_FONTS.find((f) => f.name === 'Special Elite') ?? BUILT_IN_FONTS[0];
+const DEFAULT_SETTINGS: Settings = {
+  font: DEFAULT_FONT.family,
+  fontName: DEFAULT_FONT.name,
+  fontSize: 10,
+  textColor: '#1a1a1a',
+  shirtColor: '#ffffff',
+  hAlign: 'center',
+  vAlign: 'top',
+};
+const SETTINGS_STORAGE_KEY = 'bulk-generator-settings-v1';
+
+function loadStoredSettings(): Settings {
+  if (typeof window === 'undefined') return DEFAULT_SETTINGS;
+  try {
+    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (!raw) return DEFAULT_SETTINGS;
+    const parsed = JSON.parse(raw) as Partial<Settings>;
+    // Merge over defaults so new fields stay sane if the stored shape is stale.
+    return { ...DEFAULT_SETTINGS, ...parsed };
+  } catch {
+    return DEFAULT_SETTINGS;
+  }
+}
 
 export function BulkGenerator() {
   const router = useRouter();
@@ -34,15 +60,18 @@ export function BulkGenerator() {
   const [customFonts, setCustomFonts] = useState<BuiltInFont[]>([]);
   const allFonts = useMemo<BuiltInFont[]>(() => [...BUILT_IN_FONTS, ...customFonts], [customFonts]);
 
-  const [settings, setSettings] = useState<Settings>({
-    font: DEFAULT_FONT.family,
-    fontName: DEFAULT_FONT.name,
-    fontSize: 22,
-    textColor: '#1a1a1a',
-    shirtColor: '#ffffff',
-    hAlign: 'center',
-    vAlign: 'middle',
-  });
+  // SSR-safe init: useState callback only runs once on mount.
+  const [settings, setSettings] = useState<Settings>(() => loadStoredSettings());
+
+  // Persist on every change. The work is cheap (single JSON.stringify into
+  // localStorage), so no debounce needed.
+  useEffect(() => {
+    try {
+      localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+    } catch {
+      /* quota errors / private mode — just skip */
+    }
+  }, [settings]);
 
   const [busy, setBusy] = useState(false);
   const [busyText, setBusyText] = useState('');
@@ -133,6 +162,7 @@ export function BulkGenerator() {
     textColor: settings.textColor,
     hAlign: settings.hAlign,
     vAlign: settings.vAlign,
+    fontSize: settings.fontSize,
   };
 
   const exportOne = async (row: Row) => {
@@ -358,7 +388,7 @@ export function BulkGenerator() {
               )}
             </Section>
 
-            <Section label="Text size (preview)">
+            <Section label="Text size">
               <input
                 type="range"
                 min={10}
@@ -367,7 +397,7 @@ export function BulkGenerator() {
                 onChange={(e) => setSettings({ ...settings, fontSize: Number(e.target.value) })}
                 className="w-full"
               />
-              <div className={muted}>{settings.fontSize}px (export auto-fits)</div>
+              <div className={muted}>{settings.fontSize} — applied to print export (scaled down only if text overflows)</div>
             </Section>
 
             <Section label="Text color">
