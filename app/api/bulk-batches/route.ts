@@ -14,6 +14,14 @@ const metaSchema = z.object({
   hAlign: z.enum(['left', 'center', 'right']),
   vAlign: z.enum(['top', 'middle', 'bottom']),
   shirtColor: z.string(),
+  fontSize: z.number().min(8).max(72).optional(),
+  image: z
+    .object({
+      url: z.string().url(),
+      position: z.enum(['above', 'below', 'behind']),
+    })
+    .nullable()
+    .optional(),
 });
 
 const bodySchema = z.object({

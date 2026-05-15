@@ -104,6 +104,17 @@ export const generationEvents = pgTable('generation_events', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
+export const stockImages = pgTable('stock_images', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  prompt: text('prompt').notNull(),
+  style: text('style').notNull().default('digital_illustration'),
+  blobUrl: text('blob_url').notNull(),
+  tags: text('tags').array().notNull().default([]),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export type StockImage = typeof stockImages.$inferSelect;
+
 export const customMockups = pgTable('custom_mockups', {
   id: uuid('id').primaryKey().defaultRandom(),
   designId: uuid('design_id').references(() => designs.id).notNull(),

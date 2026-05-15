@@ -14,6 +14,8 @@ import { makeZip } from '@/lib/canvas/zip';
 import { upload } from '@vercel/blob/client';
 import { THEMES, type Theme } from '@/lib/themes/library';
 import { TipsPanel } from './tips-panel';
+import { StockLibrary, type StockImage } from './stock-library';
+import type { ImagePosition } from '@/lib/canvas/render';
 
 type Row = { id: number; text: string };
 
@@ -22,6 +24,12 @@ type Settings = RenderSettings & {
   fontSize: number;
   shirtColor: string;
 };
+
+const IMAGE_POSITION_OPTIONS: { value: ImagePosition; label: string }[] = [
+  { value: 'above', label: '⬆ Above text' },
+  { value: 'below', label: '⬇ Below text' },
+  { value: 'behind', label: '◯ Behind text' },
+];
 
 // Special Elite — typewriter feel that reads cleanly at thumbnail size.
 // Anchors as the default until the user picks something else; localStorage
@@ -78,6 +86,7 @@ export function BulkGenerator() {
   const [view, setView] = useState<'editor' | 'grid'>('editor');
   const [gridBg, setGridBg] = useState<'checker' | 'white' | 'black'>('checker');
   const [themesOpen, setThemesOpen] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(false);
 
   useEffect(() => {
     preloadAllFonts();
@@ -163,6 +172,7 @@ export function BulkGenerator() {
     hAlign: settings.hAlign,
     vAlign: settings.vAlign,
     fontSize: settings.fontSize,
+    image: settings.image,
   };
 
   const exportOne = async (row: Row) => {
@@ -225,6 +235,8 @@ export function BulkGenerator() {
             hAlign: settings.hAlign,
             vAlign: settings.vAlign,
             shirtColor: settings.shirtColor,
+            fontSize: settings.fontSize,
+            image: settings.image ?? null,
           },
           designs: uploaded,
         }),
@@ -304,8 +316,11 @@ export function BulkGenerator() {
             </>
           )}
         </div>
-        <button className={btnGhost} onClick={pasteList}>📋 Paste list</button>
-        <button className={btnGhost} onClick={() => replaceAll(SAMPLE_TEXT)}>↺ Sample</button>
+        <button type="button" className={btnGhost} onClick={() => setLibraryOpen(true)}>
+          🖼 Stock library{settings.image ? ' ✓' : ''}
+        </button>
+        <button type="button" className={btnGhost} onClick={pasteList}>📋 Paste list</button>
+        <button type="button" className={btnGhost} onClick={() => replaceAll(SAMPLE_TEXT)}>↺ Sample</button>
         <button className={btnGhost} onClick={() => replaceAll('')}>✕ Clear</button>
         <button
           className={btnGhost}
@@ -459,6 +474,56 @@ export function BulkGenerator() {
               />
             </Section>
 
+            <Section label="Stock image (optional)">
+              {settings.image ? (
+                <div className="space-y-2">
+                  <div className="rounded-md border border-violet-300 bg-violet-50 p-2">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={settings.image.url} alt="" className="aspect-square w-full rounded object-contain" />
+                  </div>
+                  <select
+                    aria-label="Image position"
+                    value={settings.image.position}
+                    onChange={(e) =>
+                      setSettings({
+                        ...settings,
+                        image: { ...settings.image!, position: e.target.value as ImagePosition },
+                      })
+                    }
+                    className="w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-xs"
+                  >
+                    {IMAGE_POSITION_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setLibraryOpen(true)}
+                      className="flex-1 rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-[11px] hover:bg-zinc-50"
+                    >
+                      Change
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSettings({ ...settings, image: undefined })}
+                      className="flex-1 rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-[11px] text-zinc-600 hover:bg-zinc-50"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setLibraryOpen(true)}
+                  className="w-full rounded-md border border-dashed border-zinc-400 bg-zinc-50 px-2 py-2 text-xs text-zinc-600 hover:bg-zinc-100"
+                >
+                  + Pick from stock library
+                </button>
+              )}
+            </Section>
+
             <p className="border-t border-zinc-200 pt-3 text-[11px] leading-relaxed text-zinc-500">
               Settings apply to <strong>all</strong> shirts. Click a row to preview it with the current style.
             </p>
@@ -578,6 +643,24 @@ export function BulkGenerator() {
             <div>{busyText}</div>
           </div>
         </div>
+      )}
+
+      {libraryOpen && (
+        <StockLibrary
+          selectedUrl={settings.image?.url ?? null}
+          onPick={(img: StockImage | null) => {
+            if (img) {
+              setSettings({
+                ...settings,
+                image: { url: img.blobUrl, position: settings.image?.position ?? 'above' },
+              });
+            } else {
+              setSettings({ ...settings, image: undefined });
+            }
+            setLibraryOpen(false);
+          }}
+          onClose={() => setLibraryOpen(false)}
+        />
       )}
     </div>
   );
@@ -702,6 +785,89 @@ function ShirtPreview({
 function DesignContent({ row, settings }: { row: Row; settings: Settings }) {
   const justify = { left: 'flex-start', center: 'center', right: 'flex-end' }[settings.hAlign];
   const align = { top: 'flex-start', middle: 'center', bottom: 'flex-end' }[settings.vAlign];
+
+  const textBlock = (
+    <div
+      style={{
+        fontFamily: settings.font,
+        color: settings.textColor,
+        fontSize: settings.fontSize,
+        lineHeight: 1.05,
+        textAlign: settings.hAlign,
+        textWrap: 'balance',
+        fontWeight: 700,
+        width: '100%',
+      }}
+    >
+      {row.text || <span style={{ opacity: 0.3 }}>(empty)</span>}
+    </div>
+  );
+
+  const img = settings.image;
+
+  if (img?.position === 'behind') {
+    return (
+      <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={img.url}
+          alt=""
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            objectFit: 'contain',
+            opacity: 0.7,
+          }}
+        />
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: align,
+            alignItems: justify,
+            padding: 4,
+            boxSizing: 'border-box',
+          }}
+        >
+          {textBlock}
+        </div>
+      </div>
+    );
+  }
+
+  if (img?.position === 'above' || img?.position === 'below') {
+    return (
+      <div
+        style={{
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          flexDirection: img.position === 'above' ? 'column' : 'column-reverse',
+          gap: 4,
+          padding: 4,
+          boxSizing: 'border-box',
+        }}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={img.url} alt="" style={{ width: '100%', height: '40%', objectFit: 'contain' }} />
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            justifyContent: justify,
+            alignItems: 'center',
+          }}
+        >
+          {textBlock}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       style={{
@@ -715,20 +881,7 @@ function DesignContent({ row, settings }: { row: Row; settings: Settings }) {
         boxSizing: 'border-box',
       }}
     >
-      <div
-        style={{
-          fontFamily: settings.font,
-          color: settings.textColor,
-          fontSize: settings.fontSize,
-          lineHeight: 1.05,
-          textAlign: settings.hAlign,
-          textWrap: 'balance',
-          fontWeight: 700,
-          width: '100%',
-        }}
-      >
-        {row.text || <span style={{ opacity: 0.3 }}>(empty)</span>}
-      </div>
+      {textBlock}
     </div>
   );
 }
