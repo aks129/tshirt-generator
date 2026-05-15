@@ -18,7 +18,11 @@ const bodySchema = z.object({
   tags: z.array(z.string().max(40)).max(10).optional(),
 });
 
-const TRANSPARENT_PROMPT_SUFFIX = ', transparent background, isolated design, no background, t-shirt design ready';
+// Bias Recraft toward producing JUST the subject on a transparent background —
+// not a photo of a t-shirt with the subject printed on it. The previous suffix
+// said 't-shirt design ready' which Recraft interpreted as 'render a t-shirt'.
+const TRANSPARENT_PROMPT_SUFFIX =
+  ', isolated subject only, centered, transparent background, no clothing, no t-shirt, no fabric, no background scene, no shadow, no frame, just the subject itself';
 
 export async function GET() {
   const rows = await db.select().from(stockImages).orderBy(desc(stockImages.createdAt));

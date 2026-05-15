@@ -6,6 +6,16 @@ export type ImagePosition = 'above' | 'below' | 'behind';
 export type StockImageLayer = {
   url: string;
   position: ImagePosition;
+  /** 0.3–1.5: scales the image relative to its allocated slot. 1 = fills the
+   *  slot at the natural aspect ratio. <1 = smaller with whitespace. >1 = grows
+   *  beyond the slot (clipped at canvas edges). Default 1. */
+  scale?: number;
+  /** -0.3 to 0.3: shifts the image horizontally as a fraction of canvas width.
+   *  0 = centered in its slot. Default 0. */
+  offsetX?: number;
+  /** -0.3 to 0.3: shifts the image vertically as a fraction of canvas height.
+   *  0 = centered in its slot. Default 0. */
+  offsetY?: number;
 };
 
 export type RenderSettings = {
@@ -110,12 +120,16 @@ export async function renderRowToBlob(text: string, settings: RenderSettings): P
     try {
       const img = await loadImage(settings.image.url);
       const r = imageRegion(settings.image.position);
-      // Fit by 'contain' to preserve aspect ratio inside the slot.
-      const ratio = Math.min(r.w / img.width, r.h / img.height);
+      const scale = settings.image.scale ?? 1;
+      const offsetX = settings.image.offsetX ?? 0;
+      const offsetY = settings.image.offsetY ?? 0;
+      // Fit by 'contain' to preserve aspect ratio, then apply user scale.
+      const baseRatio = Math.min(r.w / img.width, r.h / img.height);
+      const ratio = baseRatio * scale;
       const drawW = img.width * ratio;
       const drawH = img.height * ratio;
-      const drawX = r.x + (r.w - drawW) / 2;
-      const drawY = r.y + (r.h - drawH) / 2;
+      const drawX = r.x + (r.w - drawW) / 2 + offsetX * PRINT_W;
+      const drawY = r.y + (r.h - drawH) / 2 + offsetY * PRINT_H;
       ctx.drawImage(img, drawX, drawY, drawW, drawH);
     } catch {
       // Skip image silently; text still renders. Operator can re-pick.

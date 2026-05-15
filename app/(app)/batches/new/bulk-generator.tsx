@@ -496,6 +496,59 @@ export function BulkGenerator() {
                       <option key={o.value} value={o.value}>{o.label}</option>
                     ))}
                   </select>
+                  <div className="space-y-1.5 rounded-md border border-zinc-200 bg-zinc-50 p-2">
+                    <SliderRow
+                      label="Size"
+                      value={Math.round((settings.image.scale ?? 1) * 100)}
+                      unit="%"
+                      min={30}
+                      max={150}
+                      onChange={(v) =>
+                        setSettings({
+                          ...settings,
+                          image: { ...settings.image!, scale: v / 100 },
+                        })
+                      }
+                    />
+                    <SliderRow
+                      label="↔ Shift"
+                      value={Math.round((settings.image.offsetX ?? 0) * 100)}
+                      unit="%"
+                      min={-30}
+                      max={30}
+                      onChange={(v) =>
+                        setSettings({
+                          ...settings,
+                          image: { ...settings.image!, offsetX: v / 100 },
+                        })
+                      }
+                    />
+                    <SliderRow
+                      label="↕ Shift"
+                      value={Math.round((settings.image.offsetY ?? 0) * 100)}
+                      unit="%"
+                      min={-30}
+                      max={30}
+                      onChange={(v) =>
+                        setSettings({
+                          ...settings,
+                          image: { ...settings.image!, offsetY: v / 100 },
+                        })
+                      }
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSettings({
+                          ...settings,
+                          image: { ...settings.image!, scale: 1, offsetX: 0, offsetY: 0 },
+                        })
+                      }
+                      className="text-[10px] text-zinc-500 hover:text-zinc-900 underline"
+                    >
+                      Reset size + position
+                    </button>
+                  </div>
                   <div className="flex gap-1">
                     <button
                       type="button"
@@ -685,6 +738,33 @@ function Section({ label, children }: { label: string; children: React.ReactNode
   );
 }
 
+function SliderRow({
+  label, value, unit, min, max, onChange,
+}: {
+  label: string;
+  value: number;
+  unit: string;
+  min: number;
+  max: number;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2 text-[11px]">
+      <span className="w-12 text-zinc-600">{label}</span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        aria-label={label}
+        className="flex-1"
+      />
+      <span className="w-10 text-right tabular-nums text-zinc-500">{value}{unit}</span>
+    </div>
+  );
+}
+
 function SegControl<T extends string>({
   value,
   onChange,
@@ -804,6 +884,10 @@ function DesignContent({ row, settings }: { row: Row; settings: Settings }) {
   );
 
   const img = settings.image;
+  const imgScale = img?.scale ?? 1;
+  const imgOffsetX = (img?.offsetX ?? 0) * 100; // % of preview width
+  const imgOffsetY = (img?.offsetY ?? 0) * 100; // % of preview height
+  const imgTransform = `translate(${imgOffsetX}%, ${imgOffsetY}%) scale(${imgScale})`;
 
   if (img?.position === 'behind') {
     return (
@@ -819,6 +903,8 @@ function DesignContent({ row, settings }: { row: Row; settings: Settings }) {
             height: '100%',
             objectFit: 'contain',
             opacity: 0.7,
+            transform: imgTransform,
+            transformOrigin: 'center',
           }}
         />
         <div
@@ -853,7 +939,17 @@ function DesignContent({ row, settings }: { row: Row; settings: Settings }) {
         }}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={img.url} alt="" style={{ width: '100%', height: '40%', objectFit: 'contain' }} />
+        <img
+          src={img.url}
+          alt=""
+          style={{
+            width: '100%',
+            height: '40%',
+            objectFit: 'contain',
+            transform: imgTransform,
+            transformOrigin: 'center',
+          }}
+        />
         <div
           style={{
             flex: 1,
