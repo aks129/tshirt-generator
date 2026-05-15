@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Image from 'next/image';
 import type { Concept } from '@/lib/schemas';
+import { MockupGallery } from './mockup-gallery';
 
 type Row = {
   id: string;
@@ -28,6 +29,7 @@ export function ListingsTable({ rows }: { rows: Row[] }) {
   const [filter, setFilter] = useState<Filter>('all');
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [galleryFor, setGalleryFor] = useState<{ designId: string; listingId: string; etsyListingId: string | null } | null>(null);
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
 
   const visible = rows.filter((r) => !hiddenIds.has(r.id));
@@ -56,27 +58,8 @@ export function ListingsTable({ rows }: { rows: Row[] }) {
     }
   }
 
-  async function generateCustom(id: string) {
-    if (!confirm('Generate 3 custom AI mockups for this listing? Uses ~$0.12 in Recraft credits and takes 20-40 seconds.')) return;
-    setRetryingId(id);
-    try {
-      const res = await fetch(`/api/listings/${id}/custom-mockups`, { method: 'POST' });
-      const text = await res.text();
-      if (!text) {
-        alert('Server timed out. Refresh to see if photos were uploaded.');
-      } else {
-        try {
-          const j = JSON.parse(text);
-          if (!j.ok) alert(j.error || 'Custom mockup generation failed');
-          else alert(`Uploaded ${j.uploadedCount}/${j.total} custom mockups.${j.failures ? '\n\nFailures:\n' + j.failures.join('\n') : ''}`);
-        } catch {
-          alert(`Unexpected response (${res.status})`);
-        }
-      }
-      window.location.reload();
-    } finally {
-      setRetryingId(null);
-    }
+  function openGallery(r: Row) {
+    setGalleryFor({ designId: r.designId, listingId: r.id, etsyListingId: r.etsyListingId });
   }
 
   async function uploadPhotos(id: string) {
@@ -189,12 +172,11 @@ export function ListingsTable({ rows }: { rows: Row[] }) {
                         {r.status === 'live' && (
                           <button
                             type="button"
-                            disabled={retryingId === r.id}
-                            onClick={() => generateCustom(r.id)}
+                            onClick={() => openGallery(r)}
                             className="rounded border border-violet-300 bg-violet-50 px-2 py-1 text-[10px] text-violet-700 hover:bg-violet-100"
-                            title="Generate 3 AI-unique mockups (~$0.12)"
+                            title="Open AI mockup gallery"
                           >
-                            {retryingId === r.id ? 'Generating…' : '✨ AI custom'}
+                            ✨ AI mockups
                           </button>
                         )}
                       </div>
@@ -210,12 +192,11 @@ export function ListingsTable({ rows }: { rows: Row[] }) {
                         </button>
                         <button
                           type="button"
-                          disabled={retryingId === r.id}
-                          onClick={() => generateCustom(r.id)}
+                          onClick={() => openGallery(r)}
                           className="rounded border border-violet-300 bg-violet-50 px-2 py-1 text-[10px] text-violet-700 hover:bg-violet-100"
-                          title="Generate 3 AI-unique mockups (~$0.12)"
+                          title="Open AI mockup gallery"
                         >
-                          {retryingId === r.id ? 'Generating…' : '✨ AI custom'}
+                          ✨ AI mockups
                         </button>
                       </div>
                     ) : (
@@ -285,6 +266,15 @@ export function ListingsTable({ rows }: { rows: Row[] }) {
           </tbody>
         </table>
       </div>
+
+      {galleryFor && (
+        <MockupGallery
+          designId={galleryFor.designId}
+          listingId={galleryFor.listingId}
+          etsyListingId={galleryFor.etsyListingId}
+          onClose={() => setGalleryFor(null)}
+        />
+      )}
     </>
   );
 }

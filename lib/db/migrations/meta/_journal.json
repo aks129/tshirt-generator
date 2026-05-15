@@ -43,6 +43,13 @@
       "when": 1778759096159,
       "tag": "0005_rich_hammerhead",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1778848496063,
+      "tag": "0006_black_zzzax",
+      "breakpoints": true
     }
   ]
 }

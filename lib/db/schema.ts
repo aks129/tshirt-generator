@@ -104,6 +104,19 @@ export const generationEvents = pgTable('generation_events', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
+export const customMockups = pgTable('custom_mockups', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  designId: uuid('design_id').references(() => designs.id).notNull(),
+  sceneName: text('scene_name').notNull(),
+  blobUrl: text('blob_url').notNull(),
+  uploadedToEtsyAt: timestamp('uploaded_to_etsy_at', { withTimezone: true }),
+  etsyImageId: text('etsy_image_id'),
+  etsyListingId: text('etsy_listing_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export type CustomMockup = typeof customMockups.$inferSelect;
+
 export const printifyCatalogCache = pgTable('printify_catalog_cache', {
   id: integer('id').primaryKey().default(1),
   blueprints: jsonb('blueprints').notNull(),
