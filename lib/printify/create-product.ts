@@ -1,48 +1,52 @@
 import { printifyFetch, shopPath } from './client';
+import type { MasterProductSpec } from './master-product';
 
 export type CreatedProduct = {
   productId: string;
 };
 
-const DEFAULT_PRICE_CENTS = 2499;
-
-export async function createProduct(opts: {
-  blueprintId: number;
-  printProviderId: number;
-  variantIds: number[];
+/** Creates a new Printify product by cloning a master's blueprint, provider,
+ *  variants (with per-variant pricing preserved), and print-area layout, then
+ *  swapping every print-area's image ID for the freshly uploaded design.
+ *
+ *  This is the new primary path. The legacy from-settings path is gone — the
+ *  master-template picker in /settings is now the only source of truth for
+ *  what shirt + colors + sizes + prices a published listing uses. */
+export async function createProductFromMaster(opts: {
+  master: MasterProductSpec;
   imageId: string;
   title: string;
   description: string;
   tags: string[];
-  priceCents?: number;
 }): Promise<CreatedProduct> {
-  const price = opts.priceCents ?? DEFAULT_PRICE_CENTS;
+  const { master, imageId } = opts;
+
   const body = {
     title: opts.title,
     description: opts.description,
-    blueprint_id: opts.blueprintId,
-    print_provider_id: opts.printProviderId,
+    blueprint_id: master.blueprintId,
+    print_provider_id: master.printProviderId,
     tags: opts.tags,
-    variants: opts.variantIds.map((id) => ({ id, price, is_enabled: true })),
-    print_areas: [
-      {
-        variant_ids: opts.variantIds,
-        placeholders: [
-          {
-            position: 'front',
-            images: [
-              {
-                id: opts.imageId,
-                x: 0.5,
-                y: 0.5,
-                scale: 1,
-                angle: 0,
-              },
-            ],
-          },
-        ],
-      },
-    ],
+    variants: master.variants.map((v) => ({
+      id: v.id,
+      price: v.price,
+      is_enabled: v.isEnabled,
+    })),
+    print_areas: master.printAreas.map((pa) => ({
+      variant_ids: pa.variantIds,
+      placeholders: pa.placeholders.map((ph) => ({
+        position: ph.position,
+        images: ph.images.map((img) => ({
+          // Preserve the master's x/y/scale/angle exactly — they came from a
+          // product the operator already approved. Only swap the image id.
+          id: imageId,
+          x: img.x,
+          y: img.y,
+          scale: img.scale,
+          angle: img.angle,
+        })),
+      })),
+    })),
   };
 
   const r = await printifyFetch<{ id: string }>(shopPath('/products.json'), {

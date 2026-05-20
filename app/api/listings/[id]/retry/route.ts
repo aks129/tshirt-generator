@@ -21,8 +21,8 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ ok: false, error: 'Design image missing' }, { status: 400 });
   }
   const s = await db.query.settings.findFirst();
-  if (!s?.defaultPrintifyBlueprintId || !s?.defaultPrintProviderId || !s?.defaultVariants) {
-    return NextResponse.json({ ok: false, error: 'Printify not configured' }, { status: 400 });
+  if (!s?.masterPrintifyProductId) {
+    return NextResponse.json({ ok: false, error: 'No master Printify product configured' }, { status: 400 });
   }
 
   await db.update(listings).set({ status: 'publishing', failureReason: null }).where(eq(listings.id, id));
@@ -31,9 +31,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     const result = await runPublish({
       designImageUrl: design.imageBlobUrl,
       fileName: `design_${listing.designId}.png`,
-      blueprintId: s.defaultPrintifyBlueprintId,
-      printProviderId: s.defaultPrintProviderId,
-      variantIds: (s.defaultVariants as { variantIds: number[] }).variantIds,
+      masterProductId: s.masterPrintifyProductId,
       title: listing.title,
       description: listing.description,
       tags: listing.tags,

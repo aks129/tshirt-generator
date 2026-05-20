@@ -93,6 +93,10 @@ export const settings = pgTable('settings', {
   etsyRefreshToken: text('etsy_refresh_token'),
   etsyTokenExpiresAt: timestamp('etsy_token_expires_at', { withTimezone: true }),
   mockupSelection: jsonb('mockup_selection'),
+  // The Printify product ID the seller has fully configured in the dashboard
+  // (blueprint, all colors/sizes, per-variant prices, curated mockups). Every
+  // publish clones this product's spec with our new design swapped in.
+  masterPrintifyProductId: text('master_printify_product_id'),
 });
 
 export const generationEvents = pgTable('generation_events', {

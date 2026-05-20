@@ -17,7 +17,6 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const bodySchema = listingCopySchema.extend({
   design_id: z.string().uuid(),
   override_safety: z.boolean().optional(),
-  price_cents: z.number().int().min(1).optional(),
 });
 
 export async function POST(req: Request) {
@@ -29,16 +28,16 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  const { design_id, title, tags, description, override_safety, price_cents } = parsed.data;
+  const { design_id, title, tags, description, override_safety } = parsed.data;
 
   const s = await db.query.settings.findFirst();
   if (!s) return NextResponse.json({ ok: false, error: 'Settings missing' }, { status: 500 });
   if (s.killSwitchActive) {
     return NextResponse.json({ ok: false, error: 'Kill switch active' }, { status: 503 });
   }
-  if (!s.printifySetupAt || !s.defaultPrintifyBlueprintId || !s.defaultPrintProviderId || !s.defaultVariants) {
+  if (!s.masterPrintifyProductId) {
     return NextResponse.json(
-      { ok: false, error: 'Printify not configured. Visit /settings.' },
+      { ok: false, error: 'No master Printify product selected. Pick one in /settings.' },
       { status: 400 },
     );
   }
@@ -74,14 +73,6 @@ export async function POST(req: Request) {
     );
   }
 
-  const finalPriceCents = price_cents ?? s.minPriceFloorCents;
-  if (finalPriceCents < s.minPriceFloorCents) {
-    return NextResponse.json(
-      { ok: false, error: `Price below floor ($${(s.minPriceFloorCents / 100).toFixed(2)})` },
-      { status: 422 },
-    );
-  }
-
   if (!override_safety) {
     const safety = await checkSafety({
       headline: (design.concept as Concept).headline,
@@ -97,8 +88,6 @@ export async function POST(req: Request) {
       );
     }
   }
-
-  const variantIds = (s.defaultVariants as { variantIds: number[] }).variantIds;
 
   const [listingRow] = await db
     .insert(listings)
@@ -118,13 +107,10 @@ export async function POST(req: Request) {
     const result = await runPublish({
       designImageUrl: design.imageBlobUrl,
       fileName: `design_${design_id}.png`,
-      blueprintId: s.defaultPrintifyBlueprintId,
-      printProviderId: s.defaultPrintProviderId,
-      variantIds,
+      masterProductId: s.masterPrintifyProductId,
       title,
       description,
       tags,
-      priceCents: finalPriceCents,
     });
 
     if (result.status === 'live') {

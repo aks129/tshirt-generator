@@ -1,0 +1,1 @@
+ALTER TABLE "settings" ADD COLUMN "master_printify_product_id" text;

@@ -3,21 +3,30 @@
 import { useEffect, useState } from 'react';
 import type { Settings } from '@/lib/db/schema';
 
-type Blueprint = { id: number; title: string; brand?: string; model?: string };
-type Provider = { id: number; title: string };
-type Variant = { id: number; title: string; color: string; size: string };
+type SellerProduct = {
+  id: string;
+  title: string;
+  blueprintId: number;
+  printProviderId: number;
+  variantCount: number;
+  visible: boolean;
+  thumbnailUrl: string | null;
+};
 
-const DEFAULT_BLUEPRINT_ID = 6;
+type MasterPreview = {
+  productId: string;
+  title: string;
+  blueprintId: number;
+  printProviderId: number;
+  variants: Array<{ id: number; price: number; isEnabled: boolean }>;
+  thumbnailUrl: string | null;
+};
 
 export function SettingsForm({ initialSettings }: { initialSettings: Settings | null }) {
-  const [blueprints, setBlueprints] = useState<Blueprint[]>([]);
-  const [providers, setProviders] = useState<Provider[]>([]);
-  const [variants, setVariants] = useState<Variant[]>([]);
-  const [blueprintId, setBlueprintId] = useState(initialSettings?.defaultPrintifyBlueprintId ?? DEFAULT_BLUEPRINT_ID);
-  const [providerId, setProviderId] = useState(initialSettings?.defaultPrintProviderId ?? 0);
-  const [selectedVariantIds, setSelectedVariantIds] = useState<Set<number>>(
-    new Set((initialSettings?.defaultVariants as { variantIds?: number[] } | null)?.variantIds ?? []),
-  );
+  const [sellerProducts, setSellerProducts] = useState<SellerProduct[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(false);
+  const [masterId, setMasterId] = useState<string | null>(initialSettings?.masterPrintifyProductId ?? null);
+  const [masterPreview, setMasterPreview] = useState<MasterPreview | null>(null);
   const [dailyGenerationCap, setDailyGenerationCap] = useState(initialSettings?.dailyGenerationCap ?? 50);
   const [dailyPublishCap, setDailyPublishCap] = useState(initialSettings?.dailyPublishCap ?? 15);
   const [dailyBudgetCents, setDailyBudgetCents] = useState(initialSettings?.dailyBudgetCents ?? 500);
@@ -41,14 +50,13 @@ export function SettingsForm({ initialSettings }: { initialSettings: Settings | 
   const [success, setSuccess] = useState('');
 
   useEffect(() => {
-    fetch('/api/printify/catalog')
+    setLoadingProducts(true);
+    fetch('/api/printify/my-products')
       .then((r) => r.json())
       .then((j) => {
-        if (j.ok) {
-          setBlueprints(j.blueprints);
-          setProviders(j.providers);
-        }
-      });
+        if (j.ok) setSellerProducts(j.products);
+      })
+      .finally(() => setLoadingProducts(false));
     fetch('/api/mockups/available')
       .then((r) => r.json())
       .then((j) => {
@@ -56,24 +64,20 @@ export function SettingsForm({ initialSettings }: { initialSettings: Settings | 
       });
   }, []);
 
+  // Fetch full spec preview whenever master selection changes — gives the
+  // operator a price range + variant count to verify before publishing.
   useEffect(() => {
-    if (!providerId) return;
-    fetch(`/api/printify/catalog?blueprintId=${blueprintId}&providerId=${providerId}`)
+    if (!masterId) {
+      setMasterPreview(null);
+      return;
+    }
+    fetch(`/api/printify/my-products?id=${masterId}`)
       .then((r) => r.json())
       .then((j) => {
-        if (j.ok) setVariants(j.variants);
-      });
-  }, [blueprintId, providerId]);
-
-  const colors = Array.from(new Set(variants.map((v) => v.color))).filter(Boolean);
-  const sizes = Array.from(new Set(variants.map((v) => v.size))).filter(Boolean);
-
-  function toggleVariant(id: number) {
-    const next = new Set(selectedVariantIds);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setSelectedVariantIds(next);
-  }
+        if (j.ok) setMasterPreview(j.master);
+      })
+      .catch(() => {});
+  }, [masterId]);
 
   function addMockupLabel(label: string) {
     if (selectedLabels.includes(label)) return;
@@ -132,9 +136,7 @@ export function SettingsForm({ initialSettings }: { initialSettings: Settings | 
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          defaultPrintifyBlueprintId: blueprintId,
-          defaultPrintProviderId: providerId,
-          defaultVariants: { variantIds: Array.from(selectedVariantIds) },
+          masterPrintifyProductId: masterId,
           dailyGenerationCap,
           dailyPublishCap,
           dailyBudgetCents,
@@ -194,80 +196,72 @@ export function SettingsForm({ initialSettings }: { initialSettings: Settings | 
       </section>
 
       <section className="rounded-xl border border-zinc-200 bg-white p-5">
-        <h2 className="mb-3 text-base font-bold">Printify</h2>
-        <div className="space-y-3">
+        <h2 className="mb-1 text-base font-bold">Master Printify product</h2>
+        <p className="mb-3 text-xs text-zinc-500">
+          Every published design clones this product&apos;s blueprint, colors, sizes, per-variant prices, and print-area placement.
+          Set it up once in your Printify dashboard (with curated mockups), then pick it here.
+        </p>
+
+        {loadingProducts && (
+          <p className="rounded bg-zinc-50 px-3 py-2 text-xs text-zinc-500">Loading your Printify products…</p>
+        )}
+
+        {!loadingProducts && sellerProducts.length === 0 && (
+          <p className="rounded bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            No Printify products found. Create one in the{' '}
+            <a href="https://printify.com/app/products" target="_blank" rel="noopener" className="underline">
+              Printify dashboard
+            </a>{' '}
+            with your target colors, sizes, prices, and mockup selection — then refresh this page.
+          </p>
+        )}
+
+        {sellerProducts.length > 0 && (
           <div>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-zinc-600" htmlFor="blueprint-select">Blueprint</label>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-zinc-600" htmlFor="master-select">
+              Master template
+            </label>
             <select
-              id="blueprint-select"
+              id="master-select"
+              value={masterId ?? ''}
+              onChange={(e) => setMasterId(e.target.value || null)}
               className="w-full rounded-md border border-zinc-300 bg-white px-2.5 py-2 text-sm"
-              value={blueprintId}
-              onChange={(e) => setBlueprintId(Number(e.target.value))}
             >
-              {blueprints.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.title}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-zinc-600" htmlFor="provider-select">Print provider</label>
-            <select
-              id="provider-select"
-              className="w-full rounded-md border border-zinc-300 bg-white px-2.5 py-2 text-sm"
-              value={providerId}
-              onChange={(e) => setProviderId(Number(e.target.value))}
-            >
-              <option value={0}>Select a provider…</option>
-              {providers.map((p) => (
+              <option value="">— Select a master product —</option>
+              {sellerProducts.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.title}
+                  {p.title} ({p.variantCount} variants)
                 </option>
               ))}
             </select>
-          </div>
-          {variants.length > 0 && (
-            <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-zinc-600">
-                Variants ({selectedVariantIds.size} selected)
-              </label>
-              <div className="overflow-x-auto rounded-md border border-zinc-200">
-                <table className="text-xs">
-                  <thead>
-                    <tr>
-                      <th className="bg-zinc-50 px-2 py-1 text-left" />
-                      {sizes.map((sz) => (
-                        <th key={sz} className="bg-zinc-50 px-2 py-1 text-center">{sz}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {colors.map((c) => (
-                      <tr key={c}>
-                        <td className="px-2 py-1 font-medium">{c}</td>
-                        {sizes.map((sz) => {
-                          const v = variants.find((x) => x.color === c && x.size === sz);
-                          if (!v) return <td key={sz} />;
-                          return (
-                            <td key={sz} className="px-2 py-1 text-center">
-                              <input
-                                type="checkbox"
-                                checked={selectedVariantIds.has(v.id)}
-                                onChange={() => toggleVariant(v.id)}
-                                aria-label={`${c} ${sz}`}
-                              />
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+
+            {masterPreview && (
+              <div className="mt-3 flex gap-3 rounded-md border border-zinc-200 bg-zinc-50 p-3">
+                {masterPreview.thumbnailUrl && (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img src={masterPreview.thumbnailUrl} alt="" className="h-20 w-20 rounded object-contain" />
+                )}
+                <div className="flex-1 text-xs">
+                  <div className="font-semibold text-zinc-900">{masterPreview.title}</div>
+                  <div className="mt-0.5 text-zinc-500">
+                    Blueprint {masterPreview.blueprintId} · Provider {masterPreview.printProviderId}
+                  </div>
+                  <div className="mt-0.5 text-zinc-500">
+                    {masterPreview.variants.length} enabled variant{masterPreview.variants.length === 1 ? '' : 's'}
+                    {' · '}
+                    Price range: $
+                    {(Math.min(...masterPreview.variants.map((v) => v.price)) / 100).toFixed(2)}
+                    {' – $'}
+                    {(Math.max(...masterPreview.variants.map((v) => v.price)) / 100).toFixed(2)}
+                  </div>
+                  <p className="mt-1.5 text-[11px] text-emerald-700">
+                    ✓ Every publish clones this product&apos;s exact config.
+                  </p>
+                </div>
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </section>
 
       <section className="rounded-xl border border-zinc-200 bg-white p-5">
@@ -371,7 +365,7 @@ export function SettingsForm({ initialSettings }: { initialSettings: Settings | 
         <button
           type="button"
           onClick={save}
-          disabled={saving || !providerId || selectedVariantIds.size === 0}
+          disabled={saving || !masterId}
           className="rounded-md bg-black px-4 py-2 text-sm text-white disabled:opacity-50"
         >
           {saving ? 'Saving…' : 'Save settings'}

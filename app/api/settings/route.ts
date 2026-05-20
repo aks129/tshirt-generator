@@ -7,9 +7,7 @@ import { eq } from 'drizzle-orm';
 export const runtime = 'nodejs';
 
 const bodySchema = z.object({
-  defaultPrintifyBlueprintId: z.number().int().positive(),
-  defaultPrintProviderId: z.number().int().positive(),
-  defaultVariants: z.object({ variantIds: z.array(z.number().int().positive()).min(1) }),
+  masterPrintifyProductId: z.string().min(1).nullable(),
   dailyGenerationCap: z.number().int().min(1),
   dailyPublishCap: z.number().int().min(1),
   dailyBudgetCents: z.number().int().min(0),
@@ -33,7 +31,7 @@ export async function PUT(req: Request) {
     .update(settings)
     .set({
       ...parsed.data,
-      printifySetupAt: new Date(),
+      printifySetupAt: parsed.data.masterPrintifyProductId ? new Date() : null,
     })
     .where(eq(settings.id, 1));
 
