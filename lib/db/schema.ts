@@ -104,6 +104,25 @@ export const generationEvents = pgTable('generation_events', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
+export const shirtTemplates = pgTable('shirt_templates', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  label: text('label').notNull(),
+  blueprintId: integer('blueprint_id').notNull(),
+  providerId: integer('provider_id'),
+  variantIds: integer('variant_ids').array().notNull().default([]),
+  colorName: text('color_name'),
+  colorHex: text('color_hex'),
+  blankImageUrl: text('blank_image_url').notNull(),
+  // printArea is { x, y, w, h } in 0-1 fractions of the blank image dimensions.
+  // Defaults center-chest: x=0.3, y=0.28, w=0.4, h=0.36.
+  printArea: jsonb('print_area').notNull(),
+  isDefault: boolean('is_default').notNull().default(false),
+  source: text('source').notNull().default('upload'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export type ShirtTemplate = typeof shirtTemplates.$inferSelect;
+
 export const stockImages = pgTable('stock_images', {
   id: uuid('id').primaryKey().defaultRandom(),
   prompt: text('prompt').notNull(),

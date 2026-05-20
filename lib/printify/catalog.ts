@@ -50,3 +50,27 @@ export async function fetchBlueprintVariants(
     size: v.options.size ?? '',
   }));
 }
+
+// Printify exposes stock blueprint imagery on the blueprint endpoint itself.
+// These tend to be one or two generic color variants (e.g. white + black) so
+// they're useful as starting templates; operators upload their own for other
+// colors. Returned shape:
+//   { title, brand, model, images: string[] }
+export async function fetchBlueprintDetail(blueprintId: number): Promise<{
+  id: number; title: string; brand?: string; model?: string; images: string[];
+}> {
+  const r = await printifyFetch<{
+    id: number;
+    title: string;
+    brand?: string;
+    model?: string;
+    images?: string[];
+  }>(`/catalog/blueprints/${blueprintId}.json`);
+  return {
+    id: r.id,
+    title: r.title,
+    brand: r.brand,
+    model: r.model,
+    images: r.images ?? [],
+  };
+}

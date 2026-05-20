@@ -25,6 +25,19 @@ type Settings = RenderSettings & {
   shirtColor: string;
 };
 
+type ShirtTemplate = {
+  id: string;
+  label: string;
+  blueprintId: number;
+  providerId: number | null;
+  colorName: string | null;
+  colorHex: string | null;
+  blankImageUrl: string;
+  printArea: { x: number; y: number; w: number; h: number };
+  isDefault: boolean;
+  source: string;
+};
+
 const IMAGE_POSITION_OPTIONS: { value: ImagePosition; label: string }[] = [
   { value: 'above', label: '⬆ Above text' },
   { value: 'below', label: '⬇ Below text' },
@@ -87,10 +100,32 @@ export function BulkGenerator() {
   const [gridBg, setGridBg] = useState<'checker' | 'white' | 'black'>('checker');
   const [themesOpen, setThemesOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [templates, setTemplates] = useState<ShirtTemplate[]>([]);
+  const [templateId, setTemplateId] = useState<string | null>(null);
 
   useEffect(() => {
     preloadAllFonts();
   }, []);
+
+  useEffect(() => {
+    fetch('/api/shirt-templates')
+      .then((r) => r.json())
+      .then((j) => {
+        if (!j.ok) return;
+        const list: ShirtTemplate[] = j.templates;
+        setTemplates(list);
+        // Auto-select the shop default on first load if the operator hasn't
+        // picked anything yet.
+        if (templateId === null) {
+          const def = list.find((t) => t.isDefault);
+          if (def) setTemplateId(def.id);
+        }
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const template = templates.find((t) => t.id === templateId) ?? null;
 
   const updateRow = (id: number, patch: Partial<Row>) =>
     setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
@@ -423,7 +458,40 @@ export function BulkGenerator() {
               />
             </Section>
 
-            <Section label="Shirt color (preview only)">
+            <Section label="Shirt template (preview backdrop)">
+              {templates.length === 0 ? (
+                <div className="rounded-md border border-dashed border-zinc-300 bg-zinc-50 p-2 text-[11px] text-zinc-500">
+                  No templates saved.{' '}
+                  <a href="/settings" className="text-blue-600 underline">
+                    Add one in settings
+                  </a>{' '}
+                  to preview your designs on real shirt photos.
+                </div>
+              ) : (
+                <select
+                  aria-label="Shirt template"
+                  value={templateId ?? ''}
+                  onChange={(e) => setTemplateId(e.target.value || null)}
+                  className="w-full rounded-md border border-zinc-300 bg-white px-2.5 py-2 text-sm"
+                >
+                  <option value="">— None (use color preset) —</option>
+                  {templates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.label}{t.isDefault ? ' (default)' : ''}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {template && (
+                <div className="mt-1.5 text-[10px] text-zinc-500">
+                  blueprint {template.blueprintId}
+                  {template.providerId ? ` · provider ${template.providerId}` : ''}
+                  {template.colorName ? ` · ${template.colorName}` : ''}
+                </div>
+              )}
+            </Section>
+
+            <Section label="Shirt color (used when no template)">
               <div className="flex flex-wrap items-center gap-1.5">
                 {SHIRT_PRESETS.map((c) => (
                   <button
@@ -663,9 +731,15 @@ export function BulkGenerator() {
             {selected ? (
               <>
                 <div className="flex justify-center rounded-lg bg-zinc-100 p-3.5">
-                  <ShirtPreview color={settings.shirtColor}>
-                    <DesignContent row={selected} settings={settings} />
-                  </ShirtPreview>
+                  {template ? (
+                    <TemplatePreview template={template}>
+                      <DesignContent row={selected} settings={settings} />
+                    </TemplatePreview>
+                  ) : (
+                    <ShirtPreview color={settings.shirtColor}>
+                      <DesignContent row={selected} settings={settings} />
+                    </ShirtPreview>
+                  )}
                 </div>
                 <div className="text-sm leading-relaxed">
                   <div className="font-semibold">
@@ -824,6 +898,41 @@ function ColorRow({
         aria-label="Custom color"
         title="Custom color"
       />
+    </div>
+  );
+}
+
+function TemplatePreview({
+  template,
+  children,
+  size = 240,
+}: {
+  template: ShirtTemplate;
+  children: React.ReactNode;
+  size?: number;
+}) {
+  // template.printArea is in 0-1 fractions of the blank image. The preview
+  // anchors the children inside that rectangle, overlaid on the photo.
+  const pa = template.printArea;
+  return (
+    <div className="relative" style={{ width: size, height: size }}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={template.blankImageUrl}
+        alt={template.label}
+        className="h-full w-full rounded object-contain"
+      />
+      <div
+        className="absolute overflow-hidden"
+        style={{
+          left: `${pa.x * 100}%`,
+          top: `${pa.y * 100}%`,
+          width: `${pa.w * 100}%`,
+          height: `${pa.h * 100}%`,
+        }}
+      >
+        {children}
+      </div>
     </div>
   );
 }
