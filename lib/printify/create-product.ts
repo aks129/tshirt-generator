@@ -32,20 +32,26 @@ export async function createProductFromMaster(opts: {
       price: v.price,
       is_enabled: v.isEnabled,
     })),
+    // Drop placeholders the master has defined but never populated with an
+    // image (e.g. blueprint exposes back/sleeve/neck print areas but the
+    // operator only placed art on the front). Printify rejects empty
+    // `images: []` arrays with a 400 'images field is required'.
     print_areas: master.printAreas.map((pa) => ({
       variant_ids: pa.variantIds,
-      placeholders: pa.placeholders.map((ph) => ({
-        position: ph.position,
-        images: ph.images.map((img) => ({
-          // Preserve the master's x/y/scale/angle exactly — they came from a
-          // product the operator already approved. Only swap the image id.
-          id: imageId,
-          x: img.x,
-          y: img.y,
-          scale: img.scale,
-          angle: img.angle,
+      placeholders: pa.placeholders
+        .filter((ph) => ph.images.length > 0)
+        .map((ph) => ({
+          position: ph.position,
+          images: ph.images.map((img) => ({
+            // Preserve the master's x/y/scale/angle exactly — they came from a
+            // product the operator already approved. Only swap the image id.
+            id: imageId,
+            x: img.x,
+            y: img.y,
+            scale: img.scale,
+            angle: img.angle,
+          })),
         })),
-      })),
     })),
   };
 

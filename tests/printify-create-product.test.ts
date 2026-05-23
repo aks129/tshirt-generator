@@ -71,4 +71,29 @@ describe('createProductFromMaster', () => {
     expect(printAreas[0].placeholders[0].images[0].x).toBe(0.5);
     expect(printAreas[0].placeholders[0].images[0].scale).toBe(0.88);
   });
+
+  it('drops placeholders the master defined but never put an image on (Printify 400 on empty images)', async () => {
+    vi.mocked(printifyFetch).mockResolvedValueOnce({ id: 'prod_new' });
+    await createProductFromMaster({
+      master: {
+        ...sampleMaster,
+        printAreas: [{
+          variantIds: [4011],
+          placeholders: [
+            { position: 'front', images: [{ id: 'm', x: 0.5, y: 0.5, scale: 1, angle: 0 }] },
+            { position: 'back', images: [] },
+            { position: 'sleeve_left', images: [] },
+          ],
+        }],
+      },
+      imageId: 'img_new',
+      title: 't',
+      description: 'd',
+      tags: [],
+    });
+    const body = (vi.mocked(printifyFetch).mock.calls[0][1] as { body: Record<string, unknown> }).body;
+    const printAreas = (body as { print_areas: Array<{ placeholders: Array<{ position: string }> }> }).print_areas;
+    expect(printAreas[0].placeholders).toHaveLength(1);
+    expect(printAreas[0].placeholders[0].position).toBe('front');
+  });
 });
