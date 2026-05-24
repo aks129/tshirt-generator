@@ -6,6 +6,7 @@ import { designs, listings, settings } from '@/lib/db/schema';
 import { listingCopySchema } from '@/lib/etsy/validators';
 import { checkSafety } from '@/lib/ai/content-safety';
 import { runPublish } from '@/lib/publish/publish-design';
+import { recommendPrice } from '@/lib/etsy/price-recommendation';
 import { logEvent } from '@/lib/events';
 import type { Concept } from '@/lib/schemas';
 
@@ -103,6 +104,28 @@ export async function POST(req: Request) {
 
   await db.update(designs).set({ status: 'publishing' }).where(eq(designs.id, design_id));
 
+  // Per-design dynamic pricing. The recommender hits Etsy comps for this
+  // slogan's niche; if it returns 'unavailable' (no comps / no key) we
+  // fall back to the master's prices.
+  let basePriceCents: number | null = null;
+  try {
+    const rec = await recommendPrice({
+      concept: {
+        headline: (design.concept as Concept).headline,
+        niche_keywords: (design.concept as Concept).niche_keywords ?? [],
+      },
+      settings: {
+        priceOffsetCents: s.priceOffsetCents,
+        minPriceFloorCents: s.minPriceFloorCents,
+      },
+    });
+    if (rec.source !== 'unavailable' && typeof rec.recommendedCents === 'number') {
+      basePriceCents = rec.recommendedCents;
+    }
+  } catch {
+    /* recommendation is non-blocking — master prices win on failure */
+  }
+
   try {
     const result = await runPublish({
       designImageUrl: design.imageBlobUrl,
@@ -111,6 +134,7 @@ export async function POST(req: Request) {
       title,
       description,
       tags,
+      basePriceCents,
     });
 
     if (result.status === 'live') {

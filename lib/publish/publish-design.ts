@@ -20,6 +20,11 @@ export async function runPublish(input: {
   title: string;
   description: string;
   tags: string[];
+  /** AI-recommended best price for this design, in cents. When supplied,
+   *  the master's variant prices are shifted so the cheapest variant lands
+   *  on this number (size upcharges preserved). Falls back to master's
+   *  prices when null. */
+  basePriceCents?: number | null;
   pollIntervalMs?: number;
   pollTimeoutMs?: number;
   preCreatedProductId?: string;
@@ -46,6 +51,7 @@ export async function runPublish(input: {
       title: input.title,
       description: input.description,
       tags: input.tags,
+      basePriceCents: input.basePriceCents ?? null,
     });
     productId = created.productId;
   }

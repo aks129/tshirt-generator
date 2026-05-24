@@ -35,6 +35,15 @@ export function PublishModal({
   const [error, setError] = useState<string>('');
   const [safetyFlags, setSafetyFlags] = useState<string[]>([]);
   const [etsyUrl, setEtsyUrl] = useState<string>('');
+  const [preflight, setPreflight] = useState<{
+    ok: boolean;
+    hardFailing: number;
+    softFailing: number;
+    checks: Array<{ id: string; severity: 'hard' | 'soft'; label: string; ok: boolean; detail?: string }>;
+    recommendedPriceCents: number | null;
+    marketMedianCents: number | null;
+  } | null>(null);
+  const [preflightRunning, setPreflightRunning] = useState(false);
   const [priceRec, setPriceRec] = useState<null | {
     source: 'fresh' | 'cached' | 'stale' | 'unavailable';
     sampleCount: number;
@@ -98,8 +107,23 @@ export function PublishModal({
       }
     }
 
+    async function fetchPreflight() {
+      setPreflightRunning(true);
+      try {
+        const res = await fetch(`/api/designs/${design.id}/preflight`);
+        const j = await res.json();
+        if (cancelled) return;
+        if (j.ok) setPreflight(j.report);
+      } catch {
+        /* silent — modal still works without preflight */
+      } finally {
+        if (!cancelled) setPreflightRunning(false);
+      }
+    }
+
     fetchDraft();
     fetchPriceRec();
+    fetchPreflight();
 
     return () => {
       cancelled = true;
@@ -233,7 +257,17 @@ export function PublishModal({
   const titleLen = draft?.title.length ?? 0;
   const tagsValid = draft && draft.tags.length === 13 && draft.tags.every((t) => /^[a-z0-9 ]+$/.test(t) && t.length <= 20);
   // Price now comes from the master Printify product, so no client-side gating.
-  const canPublish = !!draft && titleLen >= 5 && titleLen <= 140 && !!tagsValid && draft.description.length >= 20;
+  // Hard preflight checks (master set, image present, master reachable) block
+  // publish. Soft fails (color count, mockup curation, full tag set) warn but
+  // don't gate. If preflight hasn't loaded yet, don't block — defensive.
+  const preflightBlocks = preflight ? !preflight.ok : false;
+  const canPublish =
+    !!draft &&
+    titleLen >= 5 &&
+    titleLen <= 140 &&
+    !!tagsValid &&
+    draft.description.length >= 20 &&
+    !preflightBlocks;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -259,6 +293,7 @@ export function PublishModal({
 
           {status === 'editing' && draft && (
             <div className="space-y-4">
+              <PreflightPanel preflight={preflight} running={preflightRunning} />
               <Field label={`Title (${titleLen}/140)`}>
                 <input
                   className={`w-full rounded-md border px-3 py-2 text-sm ${
@@ -459,6 +494,68 @@ export function PublishModal({
         </div>
       </div>
     </div>
+  );
+}
+
+function PreflightPanel({
+  preflight,
+  running,
+}: {
+  preflight: {
+    ok: boolean;
+    hardFailing: number;
+    softFailing: number;
+    checks: Array<{ id: string; severity: 'hard' | 'soft'; label: string; ok: boolean; detail?: string }>;
+    recommendedPriceCents: number | null;
+    marketMedianCents: number | null;
+  } | null;
+  running: boolean;
+}) {
+  if (!preflight) {
+    return (
+      <div className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-500">
+        {running ? '↻ Running pre-publish checks…' : 'Pre-publish checks queued.'}
+      </div>
+    );
+  }
+  const headerClass = preflight.ok
+    ? (preflight.softFailing === 0 ? 'border-emerald-300 bg-emerald-50' : 'border-amber-300 bg-amber-50')
+    : 'border-red-300 bg-red-50';
+  const headerText = preflight.ok
+    ? (preflight.softFailing === 0
+        ? '✓ All checks pass — ready to publish'
+        : `✓ Hard checks pass · ${preflight.softFailing} soft warning${preflight.softFailing === 1 ? '' : 's'}`)
+    : `✗ ${preflight.hardFailing} blocker${preflight.hardFailing === 1 ? '' : 's'} — fix before publishing`;
+  return (
+    <details className={`rounded-md border px-3 py-2 text-xs ${headerClass}`} open={!preflight.ok}>
+      <summary className="cursor-pointer select-none font-medium">
+        {headerText}
+        {preflight.recommendedPriceCents !== null && (
+          <span className="ml-2 text-[11px] font-normal text-zinc-600">
+            · Will publish at $
+            {(preflight.recommendedPriceCents / 100).toFixed(2)}
+            {preflight.marketMedianCents !== null && (
+              <> (median ${(preflight.marketMedianCents / 100).toFixed(2)})</>
+            )}
+          </span>
+        )}
+      </summary>
+      <ul className="mt-2 space-y-1.5">
+        {preflight.checks.map((c) => (
+          <li key={c.id} className="flex items-start gap-2">
+            <span className={c.ok ? 'text-emerald-600' : c.severity === 'hard' ? 'text-red-600' : 'text-amber-600'}>
+              {c.ok ? '✓' : c.severity === 'hard' ? '✗' : '⚠'}
+            </span>
+            <span className="flex-1">
+              <span className={c.ok ? 'text-zinc-700' : 'text-zinc-900'}>{c.label}</span>
+              {c.detail && (
+                <span className="ml-1 text-zinc-500">— {c.detail}</span>
+              )}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 

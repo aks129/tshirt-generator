@@ -43,6 +43,8 @@ The app turns a list of slogans into Etsy listings, end-to-end:
 
 Do **not** reintroduce `settings.defaultPrintifyBlueprintId / defaultPrintProviderId / defaultVariants` into the publish path. The columns still exist in the DB for backward compat but nothing reads them. The publish modal has no price input — master's per-variant prices win.
 
+`createProductFromMaster` filters out placeholders the master defined but never put an image on (e.g. blueprint exposes back/sleeve/neck print areas but the operator only placed art on the front). Printify 400s with `images field is required` if you send empty `images: []`. Keep that filter.
+
 To change product config (colors, sizes, pricing, mockups): edit the master product in the Printify dashboard, then in `/settings` re-pick it (or just save — same product id) to refresh.
 
 ## Architecture map

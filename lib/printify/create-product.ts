@@ -1,5 +1,6 @@
 import { printifyFetch, shopPath } from './client';
 import type { MasterProductSpec } from './master-product';
+import { applyDynamicPricing } from '@/lib/publish/dynamic-pricing';
 
 export type CreatedProduct = {
   productId: string;
@@ -18,8 +19,13 @@ export async function createProductFromMaster(opts: {
   title: string;
   description: string;
   tags: string[];
+  /** When set, shifts every variant's price by (basePriceCents - master's
+   *  lowest variant price) so Etsy's "from $X.XX" displays this number,
+   *  while size upcharges from the master are preserved. */
+  basePriceCents?: number | null;
 }): Promise<CreatedProduct> {
   const { master, imageId } = opts;
+  const pricedVariants = applyDynamicPricing(master.variants, opts.basePriceCents ?? null);
 
   const body = {
     title: opts.title,
@@ -27,7 +33,7 @@ export async function createProductFromMaster(opts: {
     blueprint_id: master.blueprintId,
     print_provider_id: master.printProviderId,
     tags: opts.tags,
-    variants: master.variants.map((v) => ({
+    variants: pricedVariants.map((v) => ({
       id: v.id,
       price: v.price,
       is_enabled: v.isEnabled,
