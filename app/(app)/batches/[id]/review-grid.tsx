@@ -1,17 +1,26 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { DesignCard } from '@/components/DesignCard';
-import type { Batch, Design } from '@/lib/db/schema';
+import { DesignCard, type DesignWithListing } from '@/components/DesignCard';
+import type { Batch } from '@/lib/db/schema';
 
-export function ReviewGrid({ initialBatch, initialDesigns }: { initialBatch: Batch; initialDesigns: Design[] }) {
+export function ReviewGrid({
+  initialBatch,
+  initialDesigns,
+}: {
+  initialBatch: Batch;
+  initialDesigns: DesignWithListing[];
+}) {
   const [designs, setDesigns] = useState(initialDesigns);
   const [batch, setBatch] = useState(initialBatch);
 
   async function refresh() {
     const res = await fetch(`/api/batches/${initialBatch.id}`, { cache: 'no-store' });
     const json = await res.json();
-    if (json.ok) { setBatch(json.batch); setDesigns(json.designs); }
+    if (json.ok) {
+      setBatch(json.batch);
+      setDesigns(json.designs);
+    }
   }
 
   useEffect(() => {

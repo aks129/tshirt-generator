@@ -58,6 +58,10 @@ export const listings = pgTable('listings', {
   publishedAt: timestamp('published_at', { withTimezone: true }),
   failureReason: text('failure_reason'),
   safetyBlocked: boolean('safety_blocked').notNull().default(false),
+  priceCents: integer('price_cents'),
+  currency: text('currency').notNull().default('USD'),
+  printifyMockupUrls: text('printify_mockup_urls').array().notNull().default([]),
+  priceRationale: text('price_rationale'),
 });
 
 export const nicheLibrary = pgTable('niche_library', {
@@ -78,6 +82,7 @@ export const settings = pgTable('settings', {
   defaultPrintProviderId: integer('default_print_provider_id'),
   defaultVariants: jsonb('default_variants'),
   etsyShopId: text('etsy_shop_id'),
+  printifyShopId: text('printify_shop_id'),
   killSwitchActive: boolean('kill_switch_active').notNull().default(false),
 });
 
