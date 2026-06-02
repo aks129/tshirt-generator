@@ -28,10 +28,15 @@ The Vercel CLI is the deploy path; there's no GitHub Actions CD. `vercel env add
 
 ## Business goal & flow
 
-The app turns a list of slogans into Etsy listings, end-to-end:
+The app turns slogans into Etsy listings, end-to-end. **There are two generation paths that coexist** — both selectable as tabs on `/batches/new` (`generator-tabs.tsx`: "Paste list" | "Generate with AI"). Don't conflate them:
 
-1. **Bulk generator** (`/batches/new`) — operator pastes slogans, picks font/size/color/template/optional stock image, renders to print-ready 3000×3600 transparent PNGs in the browser via Canvas API, uploads each to Vercel Blob.
-2. **Review queue** (`/batches/[id]`) — approve / reject individual designs.
+- **Browser-Canvas bulk generator** (`bulk-generator.tsx`, the "Paste list" tab) — operator pastes slogans, picks font/size/color/template/optional stock image, renders print-ready 3000×3600 transparent PNGs in the browser via Canvas API (`lib/canvas/render.ts`), uploads each to Vercel Blob, and `POST`s to **`/api/bulk-batches`**. No AI, no server render.
+- **AI server-side workflow** (`ai-generator.tsx`, the "Generate with AI" tab → `POST /api/batches`) — operator submits a `{prompt, styles[], count}` brief; the route inserts a `batches` row and kicks off the `generateBatch` Vercel Workflow (`app/workflows/generate-batch.ts`). The workflow expands the brief into concepts, generates each design server-side (typography → SVG rasterized with resvg; illustration → Recraft V3, then white-bg removal), uploads PNGs to Blob, and flips the batch to `ready`. The per-design regenerate button (`DesignCard.tsx`) also drives this workflow. See **Vercel Workflow generation** below.
+
+Both feed the same review → publish pipeline:
+
+1. (generation — one of the two paths above)
+2. **Review queue** (`/batches/[id]`) — approve / reject / regenerate individual designs (`/api/designs/[id]/*`).
 3. **Publish** (modal on approval) — Gemini drafts Etsy listing copy, competitive-pricing rec runs in parallel, operator hits "Publish to Etsy".
 4. **Server publish path** (`POST /api/listings`) clones the operator's **master Printify product** (blueprint, provider, all colors/sizes, per-variant prices, print-area placement) and posts a new product with the design swapped in. Printify auto-publishes the front mockup to Etsy.
 5. **Photo top-up** — `POST /api/listings/[id]/photos` fetches the remaining 9 Printify-rendered mockups and uploads them directly to Etsy via the seller's OAuth token, bypassing Printify's "only 1 mockup auto-publishes" limit.
@@ -41,7 +46,9 @@ The app turns a list of slogans into Etsy listings, end-to-end:
 
 `settings.masterPrintifyProductId` is the **only** input that controls what shirt is sold. Blueprint, providers, variant list, per-variant pricing, mockup library — all inherited from this product on every publish (`lib/printify/master-product.ts:fetchMasterProduct` → `lib/printify/create-product.ts:createProductFromMaster`).
 
-Do **not** reintroduce `settings.defaultPrintifyBlueprintId / defaultPrintProviderId / defaultVariants` into the publish path. The columns still exist in the DB for backward compat but nothing reads them. The publish modal has no price input — master's per-variant prices win.
+The `settings.defaultPrintifyBlueprintId / defaultPrintProviderId / defaultVariants` columns are written again by the **optional "Default shirt template" picker** in `/settings` (restored intentionally), but they are still an *optional reference default* for the generator — the **publish path must never read them**. Master product remains the sole publish input. Don't wire the default-template fields into `runPublish` / `createProductFromMaster`.
+
+The publish modal has an **optional manual price override** (off by default): when the operator ticks "Override with a fixed base price", the modal sends `price_cents` and `/api/listings` uses it as `basePriceCents` (clamped to `minPriceFloorCents`), winning over the dynamic competitive rec. When off, dynamic pricing applies (competitive rec → master prices). Either way the master's per-variant size-upcharge curve is preserved by `applyDynamicPricing`.
 
 `createProductFromMaster` filters out placeholders the master defined but never put an image on (e.g. blueprint exposes back/sleeve/neck print areas but the operator only placed art on the front). Printify 400s with `images field is required` if you send empty `images: []`. Keep that filter.
 
@@ -57,10 +64,18 @@ app/(app)/           Authenticated UI pages (cookie-gated by middleware.ts)
   listings/          Live/pending listings table, sync, AI mockup gallery
   settings/          Master Printify picker, caps, Etsy OAuth, shirt templates
 
+app/workflows/       Vercel Workflow definitions (generate-batch.ts + steps.ts)
+app/.well-known/workflow/  Auto-generated workflow runtime endpoints (do not hand-edit)
+
 app/api/             Route handlers (all runtime='nodejs')
+  batches/           POST starts the AI generateBatch workflow; [id] reads status
+  bulk-batches/      Browser-Canvas path: upload-token + batch row creation
+  designs/[id]/      Per-design actions: approve, reject, regenerate,
+                     draft-listing, price-recommendation, preflight, custom-mockups
   listings/          POST publish, GET/DELETE one, retry, sync, photos,
                      custom-mockups, upload-saved-mockups
   printify/          catalog (cached blueprints/providers), my-products (master picker)
+  shirt-templates/   Designer backdrops; import-printify pulls real shirt photos
   etsy/oauth/        PKCE OAuth flow (start, callback, disconnect)
   cron/reconcile/    Daily reconciliation pass
   insights/ai        24h provider/latency stats
@@ -72,8 +87,17 @@ lib/
                      { raw, parsed, provider } — Groq fires automatically on
                      transient Gemini failures (429/5xx/network).
   auth/              jose-signed cookie sessions (`tshirt_session`)
+  caps/              enforcement.ts — daily/batch generation cap checks
+                     (canStartBatch), gates both generation paths.
   canvas/            render.ts — print-ready PNG renderer (browser Canvas).
-                     fonts.ts — 28 curated Google Fonts.
+                     fonts.ts — 28 curated Google Fonts. zip.ts — client ZIP export.
+  recraft/           client.ts — Recraft V3 image-generation wrapper.
+  images/            Server-side raster pipeline: rasterize.ts (SVG→PNG via
+                     resvg), bg-remove.ts (white-bg detection/removal), mockup.ts.
+  blob/              upload.ts — Vercel Blob upload helper (server side).
+  preflight/         checks.ts — pre-publish QA checklist for a design.
+  schemas.ts         Shared zod schemas (DesignStyle, Concept, safety) for the
+                     AI workflow.
   db/                Drizzle schema + migrations. Single-row settings table.
   etsy/              OAuth client (PKCE), validators, listing-copy schemas,
                      scraper + Open API client for competitive pricing.
@@ -81,6 +105,10 @@ lib/
                      upload; printify-mockups.ts fetches Printify's rendered
                      mockup library; custom-mockup.ts is the Recraft+sharp
                      bespoke-mockup pipeline (manual trigger from /listings).
+                     custom-mockup.ts picks light/dark scenes via
+                     `selectScenes` driven by `printify/variant-colors.ts`
+                     (`fetchConfiguredTones` reads the master's variant colors)
+                     so dark-shirt sellers get dark-shirt mockups.
   printify/          Thin REST wrappers. master-product.ts is the canonical
                      publish input; create-product.ts only knows how to clone.
   publish/           publish-design.ts — top-level orchestrator
@@ -92,6 +120,14 @@ lib/
 docs/superpowers/    Implementation plans + specs (4 plans shipped: Foundation,
                      Publishing, Competitive Pricing, Mockup Photos).
 ```
+
+## Vercel Workflow generation
+
+AI batch generation runs as a **durable Vercel Workflow** (`workflow` package, the WDK). `POST /api/batches` calls `start(generateBatch, [batchId])` from `workflow/api`; the `batches.workflowRunId` column tracks the run.
+
+- `app/workflows/generate-batch.ts` is the orchestrator — marked with the `'use workflow'` directive. It must stay deterministic: all I/O (DB, Recraft, Blob, AI) lives in **steps** (`app/workflows/steps.ts`), each a `'use step'` function. Don't inline side effects into the orchestrator.
+- `app/.well-known/workflow/` (config.json, manifest.json, flow/step/webhook routes) is **generated by the build** — never hand-edit; regenerate by building.
+- Steps are individually retried/resumed, so they must be idempotent. The pipeline: `expandBriefStep` (Gemini → concepts) → `insertDesignRowsStep` → `generateOneDesignStep` per design (typography→SVG/resvg, illustration→Recraft V3+bg-remove, then Blob upload) → `markBatchReadyStep`. Caps are checked up front via `checkCapsStep`; failures route to `markBatchFailedStep`.
 
 ## Database
 

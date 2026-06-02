@@ -18,6 +18,14 @@ const bodySchema = z.object({
     .object({ labels: z.array(z.string().min(1).max(64)).max(9) })
     .nullable()
     .optional(),
+  // Optional default template — not used by the master-product publish path;
+  // stored as a reference default for the generator/AI workflow.
+  defaultPrintifyBlueprintId: z.number().int().nullable().optional(),
+  defaultPrintProviderId: z.number().int().nullable().optional(),
+  defaultVariants: z
+    .object({ variantIds: z.array(z.number().int()) })
+    .nullable()
+    .optional(),
 });
 
 export async function PUT(req: Request) {

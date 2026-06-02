@@ -50,8 +50,45 @@ export function PublishModal({
     statistics: { min: number; median: number; max: number } | null;
     fetchedAt: string | null;
   }>(null);
+  // Optional manual price override. When off, the server applies dynamic
+  // pricing (competitive rec → master prices). When on, the operator's fixed
+  // base price is sent and wins.
+  const [overridePrice, setOverridePrice] = useState(false);
+  const [priceCents, setPriceCents] = useState<number | null>(null);
+  const [priceFloorCents, setPriceFloorCents] = useState<number>(1499);
+  const [priceRefreshing, setPriceRefreshing] = useState(false);
 
   const concept = design.concept as Concept;
+
+  async function loadPriceRec(force = false) {
+    try {
+      const qs = force ? '?force=true' : '';
+      const res = await fetch(`/api/designs/${design.id}/price-recommendation${qs}`, { method: 'POST' });
+      const text = await res.text();
+      if (!text) return;
+      let json: { ok?: boolean; recommendedCents?: number; source?: string; sampleCount?: number; statistics?: { min: number; median: number; max: number } | null; fetchedAt?: string | null };
+      try { json = JSON.parse(text); } catch { return; }
+      if (!json.ok) return;
+      setPriceRec({
+        source: (json.source ?? 'unavailable') as 'fresh' | 'cached' | 'stale' | 'unavailable',
+        sampleCount: json.sampleCount ?? 0,
+        statistics: json.statistics ?? null,
+        fetchedAt: json.fetchedAt ?? null,
+      });
+      if (typeof json.recommendedCents === 'number') setPriceCents(json.recommendedCents);
+    } catch {
+      /* silent — modal still usable without price rec */
+    }
+  }
+
+  async function refreshPriceRec() {
+    setPriceRefreshing(true);
+    try {
+      await loadPriceRec(true);
+    } finally {
+      setPriceRefreshing(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -87,26 +124,6 @@ export function PublishModal({
       }
     }
 
-    async function fetchPriceRec() {
-      try {
-        const res = await fetch(`/api/designs/${design.id}/price-recommendation`, { method: 'POST' });
-        const text = await res.text();
-        if (cancelled) return;
-        if (!text) return;
-        let json: { ok?: boolean; source?: string; sampleCount?: number; statistics?: { min: number; median: number; max: number } | null; fetchedAt?: string | null };
-        try { json = JSON.parse(text); } catch { return; }
-        if (!json.ok) return;
-        setPriceRec({
-          source: (json.source ?? 'unavailable') as 'fresh' | 'cached' | 'stale' | 'unavailable',
-          sampleCount: json.sampleCount ?? 0,
-          statistics: json.statistics ?? null,
-          fetchedAt: json.fetchedAt ?? null,
-        });
-      } catch {
-        /* silent — modal still usable without price rec */
-      }
-    }
-
     async function fetchPreflight() {
       setPreflightRunning(true);
       try {
@@ -122,12 +139,18 @@ export function PublishModal({
     }
 
     fetchDraft();
-    fetchPriceRec();
+    loadPriceRec(false);
     fetchPreflight();
+    fetch('/api/settings/floor')
+      .then((r) => r.json())
+      .then((j) => { if (!cancelled && j?.floorCents) setPriceFloorCents(j.floorCents); })
+      .catch(() => {});
 
     return () => {
       cancelled = true;
     };
+    // loadPriceRec is stable for a given design.id; deps intentionally minimal.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [design.id]);
 
   async function publish(override = false) {
@@ -144,8 +167,9 @@ export function PublishModal({
           tags: draft.tags,
           description: draft.description,
           override_safety: override,
-          /* price is no longer passed — master Printify product's
-             per-variant pricing is the source of truth */
+          // When the operator overrides, send a fixed base price; otherwise
+          // omit and let the server apply dynamic pricing from the master product.
+          ...(overridePrice && priceCents !== null ? { price_cents: priceCents } : {}),
         }),
       });
       const text = await res.text();
@@ -261,13 +285,16 @@ export function PublishModal({
   // publish. Soft fails (color count, mockup curation, full tag set) warn but
   // don't gate. If preflight hasn't loaded yet, don't block — defensive.
   const preflightBlocks = preflight ? !preflight.ok : false;
+  // Only gate on price when the operator has opted into a manual override.
+  const priceOverrideValid = !overridePrice || (priceCents !== null && priceCents >= priceFloorCents);
   const canPublish =
     !!draft &&
     titleLen >= 5 &&
     titleLen <= 140 &&
     !!tagsValid &&
     draft.description.length >= 20 &&
-    !preflightBlocks;
+    !preflightBlocks &&
+    priceOverrideValid;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -317,9 +344,11 @@ export function PublishModal({
               </Field>
               <Field label="Pricing">
                 <div className="space-y-1.5">
-                  <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
-                    ✓ Per-variant pricing inherited from the master Printify product set in <a href="/settings" className="underline">/settings</a>.
-                  </p>
+                  {!overridePrice && (
+                    <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                      ✓ Dynamic pricing: per-variant prices from the master Printify product set in <a href="/settings" className="underline">/settings</a>, shifted to the AI competitive recommendation.
+                    </p>
+                  )}
                   {priceRec && priceRec.statistics && priceRec.source !== 'unavailable' && (
                     <p className={
                       priceRec.source === 'stale'
@@ -331,6 +360,59 @@ export function PublishModal({
                       {(priceRec.statistics.min / 100).toFixed(2)}–$
                       {(priceRec.statistics.max / 100).toFixed(2)}
                     </p>
+                  )}
+                  {priceRec && priceRec.source === 'unavailable' && !overridePrice && (
+                    <p className="text-xs text-amber-700">
+                      ⚠ Couldn&apos;t fetch competitive data — keeping the master product&apos;s prices.
+                    </p>
+                  )}
+                  <label className="flex items-center gap-2 text-xs text-zinc-700">
+                    <input
+                      type="checkbox"
+                      checked={overridePrice}
+                      onChange={(e) => setOverridePrice(e.target.checked)}
+                    />
+                    Override with a fixed base price
+                  </label>
+                  {overridePrice && (
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <div className="relative">
+                          <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-zinc-400">$</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min={priceFloorCents / 100}
+                            className={`w-28 rounded-md border py-2 pl-5 pr-2 text-sm ${
+                              priceCents !== null && priceCents < priceFloorCents ? 'border-red-500' : 'border-zinc-300'
+                            }`}
+                            value={priceCents !== null ? (priceCents / 100).toFixed(2) : ''}
+                            onChange={(e) => {
+                              const v = parseFloat(e.target.value);
+                              if (Number.isFinite(v)) setPriceCents(Math.round(v * 100));
+                              else setPriceCents(null);
+                            }}
+                            aria-label="Price in dollars"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          disabled={priceRefreshing}
+                          className="rounded-md border border-zinc-300 px-2.5 py-2 text-xs text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+                          onClick={refreshPriceRec}
+                        >
+                          {priceRefreshing ? '…' : '↻ Refresh competitive data'}
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-zinc-500">
+                        Applied as the lowest variant price; the master&apos;s size upcharge curve is preserved.
+                      </p>
+                      {priceCents !== null && priceCents < priceFloorCents && (
+                        <p className="text-[11px] text-red-600">
+                          Below floor (${(priceFloorCents / 100).toFixed(2)}). Raise the price to publish.
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
               </Field>

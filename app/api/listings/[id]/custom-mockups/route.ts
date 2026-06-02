@@ -6,6 +6,8 @@ import { listings, designs, customMockups } from '@/lib/db/schema';
 import { getEtsyAccessToken } from '@/lib/etsy/oauth-client';
 import { EtsyAuthExpired, EtsyAuthNotConnected, EtsyUploadError } from '@/lib/etsy/errors';
 import { generateCustomMockupSet } from '@/lib/mockups/custom-mockup';
+import { fetchMasterProduct } from '@/lib/printify/master-product';
+import { fetchConfiguredTones, type ShirtTone } from '@/lib/printify/variant-colors';
 import { uploadEtsyListingImage } from '@/lib/mockups/upload-to-etsy';
 import { logEvent } from '@/lib/events';
 import type { Concept } from '@/lib/schemas';
@@ -40,11 +42,30 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const sloganBase = (design.concept as Concept).headline.replace(/[^\w\s-]+/g, '').trim().slice(0, 60);
 
+  // Derive the shirt tones the seller actually offers from the master product,
+  // so dark-shirt sellers get dark-shirt mockups. Non-blocking: any failure
+  // leaves tones undefined and the generator falls back to light scenes.
+  let tones: Set<ShirtTone> | undefined;
+  try {
+    const cfg = await db.query.settings.findFirst();
+    if (cfg?.masterPrintifyProductId) {
+      const master = await fetchMasterProduct(cfg.masterPrintifyProductId);
+      tones = await fetchConfiguredTones({
+        blueprintId: master.blueprintId,
+        providerId: master.printProviderId,
+        variantIds: master.variants.map((v) => v.id),
+      });
+    }
+  } catch {
+    /* fall back to light default */
+  }
+
   let mockups;
   try {
     mockups = await generateCustomMockupSet({
       designBlobUrl: design.imageBlobUrl,
       designId: design.id,
+      tones,
     });
   } catch (err) {
     return NextResponse.json(

@@ -22,11 +22,28 @@ type MasterPreview = {
   thumbnailUrl: string | null;
 };
 
+type Blueprint = { id: number; title: string; brand?: string; model?: string };
+type Provider = { id: number; title: string };
+type Variant = { id: number; title: string; color: string; size: string };
+
+const DEFAULT_BLUEPRINT_ID = 6;
+
 export function SettingsForm({ initialSettings }: { initialSettings: Settings | null }) {
   const [sellerProducts, setSellerProducts] = useState<SellerProduct[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [masterId, setMasterId] = useState<string | null>(initialSettings?.masterPrintifyProductId ?? null);
   const [masterPreview, setMasterPreview] = useState<MasterPreview | null>(null);
+  // Optional default template (blueprint/provider/variants). Not used by the
+  // master-product publish path; kept as a reference default for the AI
+  // generation workflow and for operators who configure colors/sizes here.
+  const [blueprints, setBlueprints] = useState<Blueprint[]>([]);
+  const [providers, setProviders] = useState<Provider[]>([]);
+  const [variants, setVariants] = useState<Variant[]>([]);
+  const [blueprintId, setBlueprintId] = useState(initialSettings?.defaultPrintifyBlueprintId ?? DEFAULT_BLUEPRINT_ID);
+  const [providerId, setProviderId] = useState(initialSettings?.defaultPrintProviderId ?? 0);
+  const [selectedVariantIds, setSelectedVariantIds] = useState<Set<number>>(
+    new Set((initialSettings?.defaultVariants as { variantIds?: number[] } | null)?.variantIds ?? []),
+  );
   const [dailyGenerationCap, setDailyGenerationCap] = useState(initialSettings?.dailyGenerationCap ?? 50);
   const [dailyPublishCap, setDailyPublishCap] = useState(initialSettings?.dailyPublishCap ?? 15);
   const [dailyBudgetCents, setDailyBudgetCents] = useState(initialSettings?.dailyBudgetCents ?? 500);
@@ -62,7 +79,27 @@ export function SettingsForm({ initialSettings }: { initialSettings: Settings | 
       .then((j) => {
         if (j.ok && Array.isArray(j.labels)) setAvailableLabels(j.labels);
       });
+    fetch('/api/printify/catalog')
+      .then((r) => r.json())
+      .then((j) => {
+        if (j.ok) {
+          setBlueprints(j.blueprints);
+          setProviders(j.providers);
+        }
+      })
+      .catch(() => {});
   }, []);
+
+  // Default-template variants depend on the blueprint+provider selection.
+  useEffect(() => {
+    if (!providerId) return;
+    fetch(`/api/printify/catalog?blueprintId=${blueprintId}&providerId=${providerId}`)
+      .then((r) => r.json())
+      .then((j) => {
+        if (j.ok) setVariants(j.variants);
+      })
+      .catch(() => {});
+  }, [blueprintId, providerId]);
 
   // Fetch full spec preview whenever master selection changes — gives the
   // operator a price range + variant count to verify before publishing.
@@ -78,6 +115,16 @@ export function SettingsForm({ initialSettings }: { initialSettings: Settings | 
       })
       .catch(() => {});
   }, [masterId]);
+
+  const colors = Array.from(new Set(variants.map((v) => v.color))).filter(Boolean);
+  const sizes = Array.from(new Set(variants.map((v) => v.size))).filter(Boolean);
+
+  function toggleVariant(id: number) {
+    const next = new Set(selectedVariantIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelectedVariantIds(next);
+  }
 
   function addMockupLabel(label: string) {
     if (selectedLabels.includes(label)) return;
@@ -144,6 +191,9 @@ export function SettingsForm({ initialSettings }: { initialSettings: Settings | 
           priceOffsetCents,
           minPriceFloorCents,
           mockupSelection: selectedLabels.length > 0 ? { labels: selectedLabels } : null,
+          defaultPrintifyBlueprintId: blueprintId,
+          defaultPrintProviderId: providerId || null,
+          defaultVariants: { variantIds: Array.from(selectedVariantIds) },
         }),
       });
       const j = await res.json();
@@ -262,6 +312,88 @@ export function SettingsForm({ initialSettings }: { initialSettings: Settings | 
             )}
           </div>
         )}
+      </section>
+
+      <section className="rounded-xl border border-zinc-200 bg-white p-5">
+        <h2 className="mb-1 text-base font-bold">Default shirt template</h2>
+        <p className="mb-3 text-xs text-zinc-500">
+          Optional. Picks a default blueprint, print provider, and variant set for the
+          generator&apos;s preview and as a reference default. The master Printify product above
+          remains the source of truth for what actually publishes.
+        </p>
+        <div className="space-y-3">
+          <div>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-zinc-600" htmlFor="blueprint-select">Blueprint</label>
+            <select
+              id="blueprint-select"
+              className="w-full rounded-md border border-zinc-300 bg-white px-2.5 py-2 text-sm"
+              value={blueprintId}
+              onChange={(e) => setBlueprintId(Number(e.target.value))}
+            >
+              {blueprints.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.title}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-zinc-600" htmlFor="provider-select">Print provider</label>
+            <select
+              id="provider-select"
+              className="w-full rounded-md border border-zinc-300 bg-white px-2.5 py-2 text-sm"
+              value={providerId}
+              onChange={(e) => setProviderId(Number(e.target.value))}
+            >
+              <option value={0}>Select a provider…</option>
+              {providers.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.title}
+                </option>
+              ))}
+            </select>
+          </div>
+          {variants.length > 0 && (
+            <div>
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-zinc-600">
+                Variants ({selectedVariantIds.size} selected)
+              </label>
+              <div className="overflow-x-auto rounded-md border border-zinc-200">
+                <table className="text-xs">
+                  <thead>
+                    <tr>
+                      <th className="bg-zinc-50 px-2 py-1 text-left" />
+                      {sizes.map((sz) => (
+                        <th key={sz} className="bg-zinc-50 px-2 py-1 text-center">{sz}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {colors.map((c) => (
+                      <tr key={c}>
+                        <td className="px-2 py-1 font-medium">{c}</td>
+                        {sizes.map((sz) => {
+                          const v = variants.find((x) => x.color === c && x.size === sz);
+                          if (!v) return <td key={sz} />;
+                          return (
+                            <td key={sz} className="px-2 py-1 text-center">
+                              <input
+                                type="checkbox"
+                                checked={selectedVariantIds.has(v.id)}
+                                onChange={() => toggleVariant(v.id)}
+                                aria-label={`${c} ${sz}`}
+                              />
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
       </section>
 
       <section className="rounded-xl border border-zinc-200 bg-white p-5">

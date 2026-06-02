@@ -18,6 +18,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const bodySchema = listingCopySchema.extend({
   design_id: z.string().uuid(),
   override_safety: z.boolean().optional(),
+  // Optional manual price override from the publish modal. When present it
+  // wins over the dynamic competitive recommendation (clamped to the floor).
+  price_cents: z.number().int().positive().optional(),
 });
 
 export async function POST(req: Request) {
@@ -29,7 +32,7 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  const { design_id, title, tags, description, override_safety } = parsed.data;
+  const { design_id, title, tags, description, override_safety, price_cents } = parsed.data;
 
   const s = await db.query.settings.findFirst();
   if (!s) return NextResponse.json({ ok: false, error: 'Settings missing' }, { status: 500 });
@@ -104,26 +107,31 @@ export async function POST(req: Request) {
 
   await db.update(designs).set({ status: 'publishing' }).where(eq(designs.id, design_id));
 
-  // Per-design dynamic pricing. The recommender hits Etsy comps for this
-  // slogan's niche; if it returns 'unavailable' (no comps / no key) we
-  // fall back to the master's prices.
+  // Pricing precedence: a manual override from the modal wins (clamped to the
+  // configured floor). Otherwise per-design dynamic pricing — the recommender
+  // hits Etsy comps for this slogan's niche; if it returns 'unavailable' (no
+  // comps / no key) we fall back to the master's prices.
   let basePriceCents: number | null = null;
-  try {
-    const rec = await recommendPrice({
-      concept: {
-        headline: (design.concept as Concept).headline,
-        niche_keywords: (design.concept as Concept).niche_keywords ?? [],
-      },
-      settings: {
-        priceOffsetCents: s.priceOffsetCents,
-        minPriceFloorCents: s.minPriceFloorCents,
-      },
-    });
-    if (rec.source !== 'unavailable' && typeof rec.recommendedCents === 'number') {
-      basePriceCents = rec.recommendedCents;
+  if (typeof price_cents === 'number') {
+    basePriceCents = Math.max(price_cents, s.minPriceFloorCents);
+  } else {
+    try {
+      const rec = await recommendPrice({
+        concept: {
+          headline: (design.concept as Concept).headline,
+          niche_keywords: (design.concept as Concept).niche_keywords ?? [],
+        },
+        settings: {
+          priceOffsetCents: s.priceOffsetCents,
+          minPriceFloorCents: s.minPriceFloorCents,
+        },
+      });
+      if (rec.source !== 'unavailable' && typeof rec.recommendedCents === 'number') {
+        basePriceCents = rec.recommendedCents;
+      }
+    } catch {
+      /* recommendation is non-blocking — master prices win on failure */
     }
-  } catch {
-    /* recommendation is non-blocking — master prices win on failure */
   }
 
   try {
