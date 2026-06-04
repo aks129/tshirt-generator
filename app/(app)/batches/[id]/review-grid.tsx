@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { DesignCard } from '@/components/DesignCard';
 import { PublishModal } from './publish-modal';
+import { BatchPublish } from './batch-publish';
 import type { Batch, Design } from '@/lib/db/schema';
 
 export function ReviewGrid({ initialBatch, initialDesigns }: { initialBatch: Batch; initialDesigns: Design[] }) {
@@ -42,6 +43,7 @@ export function ReviewGrid({ initialBatch, initialDesigns }: { initialBatch: Bat
           </button>
         )}
       </div>
+      <BatchPublish designs={designs} onDone={refresh} />
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
         {designs.map((d) => (
           <DesignCard
