@@ -3,6 +3,8 @@ import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db/client';
 import { designs } from '@/lib/db/schema';
 import { draftListingCopy, type DraftResult } from '@/lib/ai/listing-copy';
+import { fetchMasterProduct } from '@/lib/printify/master-product';
+import { getGarmentDescriptor } from '@/lib/printify/garment-descriptor';
 import { logEvent } from '@/lib/events';
 import type { Concept } from '@/lib/schemas';
 
@@ -24,7 +26,22 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
 
   const slogan = (design.concept as Concept).headline;
-  const draft = await draftListingCopy({ slogan });
+
+  // Derive the garment/material line from the master product's blueprint so the
+  // description is accurate. Non-blocking: any failure leaves garment undefined
+  // and the generator applies its safe default.
+  let garment: string | undefined;
+  try {
+    const s = await db.query.settings.findFirst();
+    if (s?.masterPrintifyProductId) {
+      const master = await fetchMasterProduct(s.masterPrintifyProductId);
+      garment = (await getGarmentDescriptor(master.blueprintId)) ?? undefined;
+    }
+  } catch {
+    /* non-blocking — default garment used */
+  }
+
+  const draft = await draftListingCopy({ slogan, garment });
 
   // Persist successful drafts. Fallback drafts also get cached so the user
   // sees consistent text on re-open; a `force=true` refresh re-runs Gemini.
