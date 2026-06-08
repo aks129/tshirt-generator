@@ -59,6 +59,15 @@ const DEFAULT_SETTINGS: Settings = {
 };
 const SETTINGS_STORAGE_KEY = 'bulk-generator-settings-v1';
 
+// The image URL is persisted in localStorage and replayed into <img src>. It is
+// only ever a Vercel Blob https URL (or a transient blob:/data:image object URL),
+// but localStorage is attacker-writable in principle, so constrain the scheme to
+// a safe allowlist before rendering — rejects javascript:/data:text-html payloads.
+function safeImageSrc(url: string | undefined | null): string | undefined {
+  if (!url) return undefined;
+  return /^(https?:|blob:|data:image\/)/i.test(url) ? url : undefined;
+}
+
 function loadStoredSettings(): Settings {
   if (typeof window === 'undefined') return DEFAULT_SETTINGS;
   try {
@@ -547,7 +556,7 @@ export function BulkGenerator() {
                 <div className="space-y-2">
                   <div className="rounded-md border border-violet-300 bg-violet-50 p-2">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={settings.image.url} alt="" className="aspect-square w-full rounded object-contain" />
+                    <img src={safeImageSrc(settings.image.url)} alt="" className="aspect-square w-full rounded object-contain" />
                   </div>
                   <select
                     aria-label="Image position"
@@ -1003,7 +1012,7 @@ function DesignContent({ row, settings }: { row: Row; settings: Settings }) {
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={img.url}
+          src={safeImageSrc(img.url)}
           alt=""
           style={{
             position: 'absolute',
@@ -1049,7 +1058,7 @@ function DesignContent({ row, settings }: { row: Row; settings: Settings }) {
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={img.url}
+          src={safeImageSrc(img.url)}
           alt=""
           style={{
             width: '100%',
