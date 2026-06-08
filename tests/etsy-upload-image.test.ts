@@ -79,7 +79,7 @@ describe('uploadEtsyListingImage', () => {
 
   it('throws EtsyUploadError after exhausting 3 retries all returning 429', async () => {
     vi.useFakeTimers();
-    vi.spyOn(global, 'fetch').mockResolvedValue(
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValue(
       new Response('rate limited', { status: 429 }),
     );
     const promise = uploadEtsyListingImage({
@@ -89,6 +89,8 @@ describe('uploadEtsyListingImage', () => {
     const assertion = expect(promise).rejects.toMatchObject({ name: 'EtsyUploadError', status: 429 });
     await vi.runAllTimersAsync();
     await assertion;
+    // 1 initial call + 3 retries, then give up — the loop is bounded.
+    expect(fetchSpy).toHaveBeenCalledTimes(4);
     vi.useRealTimers();
   });
 });
