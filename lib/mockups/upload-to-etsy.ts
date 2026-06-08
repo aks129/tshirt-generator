@@ -1,5 +1,17 @@
 import { EtsyUploadError } from '@/lib/etsy/errors';
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+function retryDelay(attempt: number, retryAfterHeader: string | null): number {
+  if (retryAfterHeader) {
+    const sec = parseInt(retryAfterHeader, 10);
+    return Number.isFinite(sec) ? Math.min(sec * 1000, 10_000) : 1_000;
+  }
+  return Math.min(1_000 * Math.pow(2, attempt), 10_000);
+}
+
 export async function uploadEtsyListingImage(opts: {
   accessToken: string;
   shopId: number;
@@ -20,14 +32,22 @@ export async function uploadEtsyListingImage(opts: {
   form.append('overwrite', 'false');
 
   const url = `https://openapi.etsy.com/v3/application/shops/${opts.shopId}/listings/${opts.listingId}/images`;
-  const resp = await fetch(url, {
+  const reqInit: RequestInit = {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${opts.accessToken}`,
       'x-api-key': `${apiKey}:${sharedSecret}`,
     },
     body: form,
-  });
+  };
+
+  let resp = await fetch(url, reqInit);
+
+  for (let attempt = 0; attempt < 3 && resp.status === 429; attempt++) {
+    await sleep(retryDelay(attempt, resp.headers.get('Retry-After')));
+    resp = await fetch(url, reqInit);
+  }
+
   if (!resp.ok) {
     const body = await resp.text().catch(() => '');
     throw new EtsyUploadError(resp.status, body);

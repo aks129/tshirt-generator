@@ -53,4 +53,42 @@ describe('uploadEtsyListingImage', () => {
       body: '{"error":"image too large"}',
     });
   });
+
+  it('retries on 429 with Retry-After header and eventually succeeds', async () => {
+    vi.useFakeTimers();
+    const fetchSpy = vi.spyOn(global, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(null, { status: 429, headers: { 'Retry-After': '1' } }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ listing_image_id: 9999, url_fullxfull: 'https://img.etsy/x' }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      );
+    const promise = uploadEtsyListingImage({
+      accessToken: 't', shopId: 1, listingId: '1',
+      imageBuffer: Buffer.from('x'), filename: 'x.jpg', rank: 1, altText: 'x',
+    });
+    await vi.runAllTimersAsync();
+    const r = await promise;
+    expect(r.listingImageId).toBe(9999);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
+
+  it('throws EtsyUploadError after exhausting 3 retries all returning 429', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(global, 'fetch').mockResolvedValue(
+      new Response('rate limited', { status: 429 }),
+    );
+    const promise = uploadEtsyListingImage({
+      accessToken: 't', shopId: 1, listingId: '1',
+      imageBuffer: Buffer.from('x'), filename: 'x.jpg', rank: 1, altText: 'x',
+    });
+    const assertion = expect(promise).rejects.toMatchObject({ name: 'EtsyUploadError', status: 429 });
+    await vi.runAllTimersAsync();
+    await assertion;
+    vi.useRealTimers();
+  });
 });
