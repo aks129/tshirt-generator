@@ -52,8 +52,8 @@ describe('runPublish', () => {
     vi.mocked(createProductFromMaster).mockResolvedValueOnce({ productId: 'prod_1' });
     vi.mocked(publishProduct).mockResolvedValueOnce(undefined);
     vi.mocked(getProduct)
-      .mockResolvedValueOnce({ productId: 'prod_1', etsyListingId: null, etsyUrl: null, visible: false })
-      .mockResolvedValueOnce({ productId: 'prod_1', etsyListingId: '99', etsyUrl: 'https://etsy.com/listing/99', visible: true });
+      .mockResolvedValueOnce({ productId: 'prod_1', etsyListingId: null, etsyUrl: null, visible: false, isLocked: false })
+      .mockResolvedValueOnce({ productId: 'prod_1', etsyListingId: '99', etsyUrl: 'https://etsy.com/listing/99', visible: true, isLocked: false });
 
     const r = await runPublish(baseInput);
     expect(r.status).toBe('live');
@@ -68,7 +68,7 @@ describe('runPublish', () => {
     vi.mocked(uploadImageByUrl).mockResolvedValueOnce({ imageId: 'img_2', previewUrl: '', width: 0, height: 0 });
     vi.mocked(createProductFromMaster).mockResolvedValueOnce({ productId: 'prod_2' });
     vi.mocked(publishProduct).mockResolvedValueOnce(undefined);
-    vi.mocked(getProduct).mockResolvedValue({ productId: 'prod_2', etsyListingId: null, etsyUrl: null, visible: false });
+    vi.mocked(getProduct).mockResolvedValue({ productId: 'prod_2', etsyListingId: null, etsyUrl: null, visible: false, isLocked: false });
 
     const r = await runPublish({ ...baseInput, pollTimeoutMs: 10 });
     expect(r.status).toBe('publishing_slow');
@@ -76,7 +76,7 @@ describe('runPublish', () => {
 
   it('skips create when a preCreatedProductId is supplied (retry path)', async () => {
     vi.mocked(publishProduct).mockResolvedValueOnce(undefined);
-    vi.mocked(getProduct).mockResolvedValueOnce({ productId: 'prod_3', etsyListingId: '7', etsyUrl: 'https://etsy.com/listing/7', visible: true });
+    vi.mocked(getProduct).mockResolvedValueOnce({ productId: 'prod_3', etsyListingId: '7', etsyUrl: 'https://etsy.com/listing/7', visible: true, isLocked: false });
 
     const r = await runPublish({ ...baseInput, preCreatedProductId: 'prod_3' });
     expect(r.status).toBe('live');
