@@ -13,6 +13,18 @@ export function getShopId(): string {
   return id;
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+function retryDelay(attempt: number, retryAfterHeader: string | null): number {
+  if (retryAfterHeader) {
+    const sec = parseInt(retryAfterHeader, 10);
+    return Number.isFinite(sec) ? Math.min(sec * 1000, 10_000) : 1_000;
+  }
+  return Math.min(1_000 * Math.pow(2, attempt), 10_000);
+}
+
 export async function printifyFetch<T>(
   path: string,
   opts: { method?: string; body?: unknown; query?: Record<string, string> } = {},
@@ -37,9 +49,16 @@ export async function printifyFetch<T>(
   if (opts.body !== undefined) init.body = JSON.stringify(opts.body);
 
   let resp = await fetch(url, init);
+
+  for (let attempt = 0; attempt < 3 && resp.status === 429; attempt++) {
+    await sleep(retryDelay(attempt, resp.headers.get('Retry-After')));
+    resp = await fetch(url, init);
+  }
+
   if (resp.status >= 500 && resp.status < 600) {
     resp = await fetch(url, init);
   }
+
   if (!resp.ok) {
     const body = await resp.text().catch(() => '');
     const excerpt = body.length > 0 ? ` — ${body.slice(0, 400)}` : '';
