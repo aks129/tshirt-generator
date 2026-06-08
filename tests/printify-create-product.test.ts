@@ -41,6 +41,10 @@ const sampleMaster: MasterProductSpec = {
 };
 
 describe('createProductFromMaster', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('clones blueprint, provider, variants (with prices), and print_areas; swaps image id', async () => {
     vi.mocked(printifyFetch).mockResolvedValueOnce({ id: 'prod_new' });
     const r = await createProductFromMaster({
@@ -95,5 +99,36 @@ describe('createProductFromMaster', () => {
     const printAreas = (body as { print_areas: Array<{ placeholders: Array<{ position: string }> }> }).print_areas;
     expect(printAreas[0].placeholders).toHaveLength(1);
     expect(printAreas[0].placeholders[0].position).toBe('front');
+  });
+
+  it('includes sales_channel_properties in POST body when master has it', async () => {
+    vi.mocked(printifyFetch).mockResolvedValueOnce({ id: 'prod_scp' });
+    await createProductFromMaster({
+      master: {
+        ...sampleMaster,
+        salesChannelProperties: { etsy: { shipping_template_id: 12345, taxonomy_id: 1000 } },
+      },
+      imageId: 'img_new',
+      title: 't',
+      description: 'd',
+      tags: [],
+    });
+    const body = (vi.mocked(printifyFetch).mock.calls[0][1] as { body: Record<string, unknown> }).body;
+    expect(body).toMatchObject({
+      sales_channel_properties: { etsy: { shipping_template_id: 12345, taxonomy_id: 1000 } },
+    });
+  });
+
+  it('omits sales_channel_properties when master has none', async () => {
+    vi.mocked(printifyFetch).mockResolvedValueOnce({ id: 'prod_no_scp' });
+    await createProductFromMaster({
+      master: sampleMaster,
+      imageId: 'img_new',
+      title: 't',
+      description: 'd',
+      tags: [],
+    });
+    const body = (vi.mocked(printifyFetch).mock.calls[0][1] as { body: Record<string, unknown> }).body;
+    expect(body).not.toHaveProperty('sales_channel_properties');
   });
 });

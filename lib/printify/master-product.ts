@@ -34,6 +34,7 @@ export type MasterProductSpec = {
   /** Stock illustration / mockup imagery from the master, returned so the
    *  picker can render a thumbnail. */
   thumbnailUrl: string | null;
+  salesChannelProperties?: Record<string, unknown>;
 };
 
 type PrintifyProductResp = {
@@ -50,6 +51,7 @@ type PrintifyProductResp = {
     }>;
   }>;
   images?: Array<{ src: string; position?: string; is_default?: boolean }>;
+  sales_channel_properties?: Record<string, unknown>;
 };
 
 export async function fetchMasterProduct(productId: string): Promise<MasterProductSpec> {
@@ -74,5 +76,6 @@ export async function fetchMasterProduct(productId: string): Promise<MasterProdu
       r.images?.find((i) => i.position === 'front')?.src ??
       r.images?.[0]?.src ??
       null,
+    salesChannelProperties: r.sales_channel_properties,
   };
 }

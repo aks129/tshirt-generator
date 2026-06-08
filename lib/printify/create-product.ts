@@ -59,6 +59,9 @@ export async function createProductFromMaster(opts: {
           })),
         })),
     })),
+    ...(master.salesChannelProperties && {
+      sales_channel_properties: master.salesChannelProperties,
+    }),
   };
 
   const r = await printifyFetch<{ id: string }>(shopPath('/products.json'), {
