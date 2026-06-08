@@ -94,8 +94,9 @@ describe('printifyFetch', () => {
       new Response('rate limited', { status: 429 }),
     );
     const promise = printifyFetch('/x');
+    const assertion = expect(promise).rejects.toMatchObject({ status: 429 });
     await vi.runAllTimersAsync();
-    await expect(promise).rejects.toMatchObject({ status: 429 });
+    await assertion;
     vi.useRealTimers();
   });
 });
