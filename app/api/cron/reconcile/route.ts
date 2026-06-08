@@ -6,6 +6,7 @@ import { getProduct } from '@/lib/printify/get-product';
 import { PrintifyError } from '@/lib/printify/client';
 import { logEvent } from '@/lib/events';
 import { processListingPhotos } from '@/lib/mockups/process-listing';
+import { classifyStuckPublish } from '@/lib/publish/classify-stuck-publish';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -18,7 +19,6 @@ export async function GET(req: Request) {
   }
 
   const cutoff1h = new Date(Date.now() - 60 * 60 * 1000);
-  const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
   const stuck = await db
     .select()
@@ -37,7 +37,14 @@ export async function GET(req: Request) {
     if (!l.printifyProductId) continue;
     try {
       const status = await getProduct(l.printifyProductId);
-      if (status.etsyListingId && status.etsyUrl) {
+      const decision = classifyStuckPublish({
+        isLocked: status.isLocked,
+        hasExternal: !!(status.etsyListingId && status.etsyUrl),
+        ageMs: Date.now() - new Date(l.createdAt).getTime(),
+        cutoffMs: 60 * 60 * 1000,
+      });
+
+      if (decision === 'live') {
         await db
           .update(listings)
           .set({ etsyListingId: status.etsyListingId, status: 'live', publishedAt: new Date() })
@@ -49,14 +56,24 @@ export async function GET(req: Request) {
           payload: { reconciled: true, etsyListingId: status.etsyListingId },
         });
         reconciled++;
-      } else if (l.createdAt < cutoff24h) {
+      } else if (decision === 'failed') {
         await db
           .update(listings)
-          .set({ status: 'failed', failureReason: 'Printify publish timeout (24h)' })
+          .set({
+            status: 'failed',
+            failureReason:
+              'Printify accepted the publish but no Etsy listing was created — check the Printify dashboard.',
+          })
           .where(eq(listings.id, l.id));
         await db.update(designs).set({ status: 'failed' }).where(eq(designs.id, l.designId));
+        await logEvent({
+          type: 'publish_failed',
+          designId: l.designId,
+          payload: { reconcile: true, reason: 'unlocked_no_external' },
+        });
         failed++;
       }
+      // decision === 'wait' → Printify still processing; check again next cron run
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       await logEvent({
