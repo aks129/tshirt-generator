@@ -48,15 +48,23 @@ export async function createProductFromMaster(opts: {
         .filter((ph) => ph.images.length > 0)
         .map((ph) => ({
           position: ph.position,
-          images: ph.images.map((img) => ({
-            // Preserve the master's x/y/scale/angle exactly — they came from a
-            // product the operator already approved. Only swap the image id.
-            id: imageId,
-            x: img.x,
-            y: img.y,
-            scale: img.scale,
-            angle: img.angle,
-          })),
+          images:
+            ph.images.length === 1
+              ? ph.images.map((img) => ({
+                  // Preserve the master's x/y/scale/angle exactly — they came
+                  // from a product the operator already approved. Only swap
+                  // the image id.
+                  id: imageId,
+                  x: img.x,
+                  y: img.y,
+                  scale: img.scale,
+                  angle: img.angle,
+                }))
+              : // Master design was composed of multiple editor layers (e.g.
+                // typography assembled in Printify's editor). Swapping every
+                // layer's id would stamp our single design once per layer, so
+                // collapse to one full-area centered placement instead.
+                [{ id: imageId, x: 0.5, y: 0.5, scale: 1, angle: 0 }],
         })),
     })),
     ...(master.salesChannelProperties && {
