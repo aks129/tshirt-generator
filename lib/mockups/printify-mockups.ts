@@ -33,7 +33,7 @@ function extractCameraLabel(src: string): string {
 }
 
 async function fetchProduct(productId: string): Promise<{
-  images: Array<{ src: string; position?: string; is_selected_for_publishing?: boolean }>;
+  images: Array<{ src: string; position?: string; is_default?: boolean; is_selected_for_publishing?: boolean }>;
 }> {
   const shopId = process.env.PRINTIFY_SHOP_ID;
   const apiKey = process.env.PRINTIFY_API_KEY;
@@ -48,7 +48,7 @@ async function fetchProduct(productId: string): Promise<{
     throw new Error(`Printify GET product failed ${resp.status}: ${text.slice(0, 200)}`);
   }
   return (await resp.json()) as {
-    images: Array<{ src: string; position?: string; is_selected_for_publishing?: boolean }>;
+    images: Array<{ src: string; position?: string; is_default?: boolean; is_selected_for_publishing?: boolean }>;
   };
 }
 
@@ -68,8 +68,13 @@ export async function fetchAllPrintifyImageLabels(productId: string): Promise<st
 }
 
 /** Returns up to 9 mockups to upload, ordered by `preferredLabels` (if given)
- *  or the default priority list. Skips position='front' since Printify already
- *  publishes that one to Etsy as the listing's primary photo. */
+ *  or the default priority list. Skips the `is_default` image since Printify
+ *  already publishes that one to Etsy as the listing's primary photo.
+ *
+ *  Not all blueprints render camera-labelled libraries: Gildan 5000 gives 1
+ *  front + person/lifestyle shots, while Comfort Colors 1717 renders one
+ *  front-position image per color with no labels at all. Filtering by
+ *  position='front' (the old heuristic) returned zero mockups for the latter. */
 export async function fetchPrintifyMockups(
   productId: string,
   opts: { preferredLabels?: string[] } = {},
@@ -77,23 +82,25 @@ export async function fetchPrintifyMockups(
   const j = await fetchProduct(productId);
 
   const all: PrintifyMockup[] = (j.images ?? [])
-    .filter((i) => i.is_selected_for_publishing !== false)
+    .filter((i) => i.is_selected_for_publishing !== false && i.is_default !== true)
     .map((i) => ({
       src: i.src,
       cameraLabel: extractCameraLabel(i.src),
       position: i.position ?? 'other',
     }));
 
-  // Skip 'front' position — Printify auto-publishes that one to Etsy already.
-  const eligible = all.filter((m) => m.position !== 'front');
-
   const preferred = opts.preferredLabels && opts.preferredLabels.length > 0
     ? opts.preferredLabels
     : DEFAULT_PREFERRED_LABELS;
 
-  // Sort by preferred order; unlisted labels keep their natural order after.
+  // Sort by preferred order; unlabelled images (e.g. CC1717's per-color
+  // fronts) can't be matched by label, so they keep natural order after.
   const byLabel = new Map<string, PrintifyMockup>();
-  for (const m of eligible) byLabel.set(m.cameraLabel, m);
+  const unlabelled: PrintifyMockup[] = [];
+  for (const m of all) {
+    if (m.cameraLabel) byLabel.set(m.cameraLabel, m);
+    else unlabelled.push(m);
+  }
 
   const ordered: PrintifyMockup[] = [];
   for (const label of preferred) {
@@ -103,11 +110,14 @@ export async function fetchPrintifyMockups(
       byLabel.delete(label);
     }
   }
-  // If the operator's preferred list is shorter than 9, fill from the rest.
-  if (opts.preferredLabels && opts.preferredLabels.length > 0) {
-    // explicit selection — don't backfill with anything not chosen
+  if (opts.preferredLabels && opts.preferredLabels.length > 0 && ordered.length > 0) {
+    // explicit selection matched — don't backfill with anything not chosen
   } else {
+    // No selection, or the saved labels belong to a different blueprint's
+    // library (zero matches): upload the available mockups in natural order
+    // rather than nothing.
     for (const m of byLabel.values()) ordered.push(m);
+    ordered.push(...unlabelled);
   }
 
   return ordered.slice(0, MAX_EXTRA_PHOTOS);
