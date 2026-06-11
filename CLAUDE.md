@@ -41,7 +41,7 @@ Both feed the same review → publish pipeline:
 2. **Review queue** (`/batches/[id]`) — approve / reject / regenerate individual designs (`/api/designs/[id]/*`).
 3. **Publish** (modal on approval) — Gemini drafts Etsy listing copy, competitive-pricing rec runs in parallel, operator hits "Publish to Etsy".
 4. **Server publish path** (`POST /api/listings`) clones the operator's **master Printify product** (blueprint, provider, all colors/sizes, per-variant prices, print-area placement) and posts a new product with the design swapped in. Printify auto-publishes the front mockup to Etsy.
-5. **Photo top-up** — `POST /api/listings/[id]/photos` fetches the remaining 9 Printify-rendered mockups and uploads them directly to Etsy via the seller's OAuth token, bypassing Printify's "only 1 mockup auto-publishes" limit.
+5. **Photo top-up** — `POST /api/listings/[id]/photos` fetches remaining Printify-rendered mockups and uploads them directly to Etsy via the seller's OAuth token. **Blueprint-dependent:** Gildan-style blueprints auto-publish only 1 mockup (top-up adds up to 9); Comfort Colors 1717 auto-publishes its full per-color set (~14 images, all `camera_label=front`, labels NOT unique) — the top-up detects a ≥10-image gallery and skips. Etsy caps listings at 20 images.
 6. **Daily cron** (`/api/cron/reconcile`, `0 6 * * *`) flips slow publishes to `live`, flips silently-failed publishes to `failed` (see **Publish reliability**), backfills missing photos, and detects externally-deleted Printify products.
 
 ## Master Printify product = single source of truth
