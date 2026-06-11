@@ -26,6 +26,8 @@ vercel --prod --yes    # production deploy (auto-aliased to tshirt-generator-one
 
 The Vercel CLI is the deploy path; there's no GitHub Actions CD. `vercel env add NAME production` to add prod env vars; `vercel env pull .env.local` to sync down.
 
+PRs **do** run CI: a `security-baseline` reusable workflow (CodeQL) plus the default `Analyze (javascript-typescript)` scan. Known false positive — a React `<img src={value}>` flagged `js/xss-through-dom` ("DOM text reinterpreted as HTML"): React assigns `src` via the DOM property, not HTML parsing, so a string there can't be reinterpreted as markup. Dismiss as *false positive* in the Security UI rather than chasing a CodeQL-recognized sanitizer (a scheme allowlist won't clear it). The default CodeQL check is the authoritative one.
+
 ## Business goal & flow
 
 The app turns slogans into Etsy listings, end-to-end. **There are two generation paths that coexist** — both selectable as tabs on `/batches/new` (`generator-tabs.tsx`: "Paste list" | "Generate with AI"). Don't conflate them:
@@ -40,7 +42,7 @@ Both feed the same review → publish pipeline:
 3. **Publish** (modal on approval) — Gemini drafts Etsy listing copy, competitive-pricing rec runs in parallel, operator hits "Publish to Etsy".
 4. **Server publish path** (`POST /api/listings`) clones the operator's **master Printify product** (blueprint, provider, all colors/sizes, per-variant prices, print-area placement) and posts a new product with the design swapped in. Printify auto-publishes the front mockup to Etsy.
 5. **Photo top-up** — `POST /api/listings/[id]/photos` fetches the remaining 9 Printify-rendered mockups and uploads them directly to Etsy via the seller's OAuth token, bypassing Printify's "only 1 mockup auto-publishes" limit.
-6. **Daily cron** (`/api/cron/reconcile`, `0 6 * * *`) flips slow publishes to `live`, backfills missing photos, and detects externally-deleted Printify products.
+6. **Daily cron** (`/api/cron/reconcile`, `0 6 * * *`) flips slow publishes to `live`, flips silently-failed publishes to `failed` (see **Publish reliability**), backfills missing photos, and detects externally-deleted Printify products.
 
 ## Master Printify product = single source of truth
 
@@ -53,6 +55,15 @@ The publish modal has an **optional manual price override** (off by default): wh
 `createProductFromMaster` filters out placeholders the master defined but never put an image on (e.g. blueprint exposes back/sleeve/neck print areas but the operator only placed art on the front). Printify 400s with `images field is required` if you send empty `images: []`. Keep that filter.
 
 To change product config (colors, sizes, pricing, mockups): edit the master product in the Printify dashboard, then in `/settings` re-pick it (or just save — same product id) to refresh.
+
+## Publish reliability (Printify → Etsy)
+
+Printify's managed Etsy publish can fail **silently**: `POST .../publish.json` returns 2xx but the product's `external` stays null and it unlocks without an Etsy listing ever being created — Printify only surfaces a generic error in its dashboard, nothing via the API. Hard-won facts:
+
+- **The master must be a plain product, not a Printify Studio personalization product** (`sales_channel_properties.personalisation`, `strategy: "pstudio"`, a `personalize.at` link). Clones of a personalization master hit the generic error and never reach Etsy. Use a plain blueprint master that has been published to Etsy once manually so its Etsy config is proven valid.
+- `createProductFromMaster` forwards the master's `sales_channel_properties` (Etsy shipping/category config) onto clones, **guarded** — only when present, so it's a byte-identical no-op for masters without it. If Printify ever 400s on create with an SCP error, the publish fails *loudly* (visible `failed` row), never silently.
+- **No silent `publishing_slow` forever.** `getProduct` exposes `isLocked`; the pure helper `lib/publish/classify-stuck-publish.ts` maps `(isLocked, hasExternal, ageMs, cutoffMs) → 'live' | 'failed' | 'wait'`; the reconcile cron flips an **unlocked + no-`external` + aged** listing to `failed` with a human-readable reason. A still-locked product returns `'wait'` (Printify is still processing) — that lock check is the safety valve against false-positive failures.
+- **429 + `Retry-After` backoff** in `printifyFetch` (`lib/printify/client.ts`) and `uploadEtsyListingImage` (`lib/mockups/upload-to-etsy.ts`): max 3 retries, honor `Retry-After` capped at 10s, exponential 1s/2s/4s fallback. Printify caps publishing at 200/30min; Etsy enforces QPS+QPD.
 
 ## Architecture map
 
@@ -117,8 +128,8 @@ lib/
   insights/          Pattern matchers + tips shown in the bulk generator and
                      publish modal.
 
-docs/superpowers/    Implementation plans + specs (4 plans shipped: Foundation,
-                     Publishing, Competitive Pricing, Mockup Photos).
+docs/superpowers/    Implementation plans + specs (Foundation, Publishing,
+                     Competitive Pricing, Mockup Photos, Publish Reliability, …).
 ```
 
 ## Vercel Workflow generation
@@ -144,7 +155,7 @@ Workflow:
 
 ## Auth
 
-`middleware.ts` cookie-gates everything except `PUBLIC_PATHS`. Env vars: `APP_PASSWORD` (single shared password, `teeshirts` in dev), `AUTH_COOKIE_SECRET` (jose signing, ≥32 chars). For curl testing: `POST /api/auth/login` with `{"password":"..."}` → use `-c/-b` cookie jar.
+`middleware.ts` cookie-gates everything except `PUBLIC_PATHS`. Env vars: `APP_PASSWORD` (single shared password, `tshirts` in dev), `AUTH_COOKIE_SECRET` (jose signing, ≥32 chars). For curl testing: `POST /api/auth/login` with `{"password":"..."}` → use `-c/-b` cookie jar.
 
 ## AI providers
 
