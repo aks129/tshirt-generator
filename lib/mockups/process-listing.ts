@@ -12,6 +12,24 @@ import type { Concept } from '@/lib/schemas';
 // at rank 2. We upload up to 9 → final listing has up to 10 photos.
 const RANK_OFFSET = 2;
 
+/** Public read — counts photos already on the Etsy listing. Returns null on
+ *  any error so the caller falls through to the normal top-up path. */
+async function countEtsyListingImages(etsyListingId: string): Promise<number | null> {
+  const apiKey = process.env.ETSY_API_KEY;
+  const sharedSecret = process.env.ETSY_SHARED_SECRET;
+  if (!apiKey || !sharedSecret) return null;
+  try {
+    const resp = await fetch(`https://openapi.etsy.com/v3/application/listings/${etsyListingId}/images`, {
+      headers: { 'x-api-key': `${apiKey}:${sharedSecret}` },
+    });
+    if (!resp.ok) return null;
+    const j = (await resp.json()) as { count?: number };
+    return typeof j.count === 'number' ? j.count : null;
+  } catch {
+    return null;
+  }
+}
+
 export type ProcessResult =
   | { ok: true; uploadedCount: number; failures: string[] }
   | { ok: false; errorCode: string; status: number; message: string };
@@ -44,6 +62,16 @@ export async function processListingPhotos(
   const s = await db.query.settings.findFirst();
   const shopId = s?.etsyShopIdOauth;
   if (!shopId) return { ok: false, errorCode: 'NO_SHOP', status: 400, message: 'No Etsy shop on connected account' };
+
+  // Some blueprints (e.g. Comfort Colors 1717) get their FULL per-color
+  // mockup set auto-published by Printify — not just 1 photo. Topping up then
+  // only adds duplicates until Etsy's 20-image cap rejects us. Skip when the
+  // gallery is already rich.
+  const existingCount = await countEtsyListingImages(listing.etsyListingId);
+  if (existingCount !== null && existingCount >= 10) {
+    await db.update(listings).set({ photosUploadedAt: new Date(), photosCount: 0 }).where(eq(listings.id, listingId));
+    return { ok: true, uploadedCount: 0, failures: [] };
+  }
 
   const preferredLabels = (s.mockupSelection as { labels?: string[] } | null)?.labels;
   let mockups: PrintifyMockup[];
