@@ -64,6 +64,23 @@ describe('fetchPrintifyMockups', () => {
     expect(r.map((m) => m.cameraLabel)).toEqual(['person-2']);
   });
 
+  it('returns ALL images sharing a matched label (CC1717: every per-color front has camera_label=front)', async () => {
+    mockProduct([
+      { src: 'https://i/black?camera_label=front', position: 'front', is_default: true },
+      { src: 'https://i/berry?camera_label=front', position: 'front' },
+      { src: 'https://i/bay?camera_label=front', position: 'front' },
+      { src: 'https://i/ivory?camera_label=front', position: 'front' },
+    ]);
+    const r = await fetchPrintifyMockups('prod6', { preferredLabels: ['front', 'person-1'] });
+    // Labels are not unique keys — a matched label must yield every image
+    // carrying it, not just the last one seen.
+    expect(r.map((m) => m.src)).toEqual([
+      'https://i/berry?camera_label=front',
+      'https://i/bay?camera_label=front',
+      'https://i/ivory?camera_label=front',
+    ]);
+  });
+
   it('caps at 9 mockups', async () => {
     mockProduct(
       Array.from({ length: 15 }, (_, i) => ({

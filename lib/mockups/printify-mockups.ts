@@ -93,20 +93,26 @@ export async function fetchPrintifyMockups(
     ? opts.preferredLabels
     : DEFAULT_PREFERRED_LABELS;
 
-  // Sort by preferred order; unlabelled images (e.g. CC1717's per-color
-  // fronts) can't be matched by label, so they keep natural order after.
-  const byLabel = new Map<string, PrintifyMockup>();
+  // Sort by preferred order. Labels are NOT unique per image: CC1717 renders
+  // every per-color front with camera_label=front, so group label → images[]
+  // instead of deduping, and keep unlabelled images in natural order after.
+  const byLabel = new Map<string, PrintifyMockup[]>();
   const unlabelled: PrintifyMockup[] = [];
   for (const m of all) {
-    if (m.cameraLabel) byLabel.set(m.cameraLabel, m);
-    else unlabelled.push(m);
+    if (m.cameraLabel) {
+      const list = byLabel.get(m.cameraLabel) ?? [];
+      list.push(m);
+      byLabel.set(m.cameraLabel, list);
+    } else {
+      unlabelled.push(m);
+    }
   }
 
   const ordered: PrintifyMockup[] = [];
   for (const label of preferred) {
-    const m = byLabel.get(label);
-    if (m) {
-      ordered.push(m);
+    const list = byLabel.get(label);
+    if (list) {
+      ordered.push(...list);
       byLabel.delete(label);
     }
   }
@@ -116,7 +122,7 @@ export async function fetchPrintifyMockups(
     // No selection, or the saved labels belong to a different blueprint's
     // library (zero matches): upload the available mockups in natural order
     // rather than nothing.
-    for (const m of byLabel.values()) ordered.push(m);
+    for (const list of byLabel.values()) ordered.push(...list);
     ordered.push(...unlabelled);
   }
 
