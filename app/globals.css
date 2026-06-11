@@ -49,30 +49,31 @@
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  /* "Print Shop" palette — warm paper stock, ink, screen-print persimmon. */
+  --background: oklch(0.975 0.008 84);
+  --foreground: oklch(0.26 0.015 50);
+  --card: oklch(0.995 0.004 84);
+  --card-foreground: oklch(0.26 0.015 50);
+  --popover: oklch(0.995 0.004 84);
+  --popover-foreground: oklch(0.26 0.015 50);
+  --primary: oklch(0.62 0.175 38);
+  --primary-foreground: oklch(0.985 0.006 84);
+  --secondary: oklch(0.94 0.014 84);
+  --secondary-foreground: oklch(0.32 0.02 50);
+  --muted: oklch(0.945 0.012 84);
+  --muted-foreground: oklch(0.52 0.02 60);
+  --accent: oklch(0.95 0.025 45);
+  --accent-foreground: oklch(0.42 0.12 38);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
+  --border: oklch(0.9 0.014 78);
+  --input: oklch(0.9 0.014 78);
+  --ring: oklch(0.62 0.175 38);
+  --chart-1: oklch(0.62 0.175 38);
+  --chart-2: oklch(0.6 0.09 200);
+  --chart-3: oklch(0.72 0.13 85);
+  --chart-4: oklch(0.55 0.1 145);
+  --chart-5: oklch(0.45 0.02 60);
+  --radius: 0.75rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
@@ -123,8 +124,64 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* faint paper grain — barely-there dot lattice on the warm stock */
+    background-image: radial-gradient(oklch(0.26 0.015 50 / 0.035) 1px, transparent 1px);
+    background-size: 22px 22px;
   }
   html {
     @apply font-sans;
   }
+  h1, h2 {
+    font-family: var(--font-display), var(--font-sans);
+    letter-spacing: -0.01em;
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: var(--font-display), var(--font-sans);
+  }
+  /* Garment-tag stitch: dashed seam used on hero cards and the nav. */
+  .stitch-b {
+    border-bottom: 2px dashed oklch(0.62 0.175 38 / 0.35);
+  }
+  .anim-rise {
+    animation: rise 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .anim-rise-1 { animation-delay: 0.05s; }
+  .anim-rise-2 { animation-delay: 0.12s; }
+  .anim-rise-3 { animation-delay: 0.19s; }
+  .anim-rise-4 { animation-delay: 0.26s; }
+  .press {
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+  }
+  .press:active {
+    transform: translateY(1px) scale(0.99);
+  }
+  .card-lift {
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
+  }
+  .card-lift:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px -8px oklch(0.26 0.015 50 / 0.18);
+  }
+  .pulse-dot {
+    animation: pulseDot 1.6s ease-in-out infinite;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulseDot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
 }

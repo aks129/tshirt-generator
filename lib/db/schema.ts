@@ -1,5 +1,5 @@
 import {
-  pgTable, uuid, text, integer, jsonb, boolean, timestamp, pgEnum,
+  pgTable, uuid, text, integer, bigint, jsonb, boolean, timestamp, pgEnum,
 } from 'drizzle-orm/pg-core';
 
 export const batchStatusEnum = pgEnum('batch_status', [
@@ -43,6 +43,7 @@ export const designs = pgTable('designs', {
   generationCostCents: integer('generation_cost_cents').notNull().default(0),
   safetyFlags: text('safety_flags').array().notNull().default([]),
   failureReason: text('failure_reason'),
+  listingDraft: jsonb('listing_draft'),
 });
 
 export const listings = pgTable('listings', {
@@ -58,10 +59,10 @@ export const listings = pgTable('listings', {
   publishedAt: timestamp('published_at', { withTimezone: true }),
   failureReason: text('failure_reason'),
   safetyBlocked: boolean('safety_blocked').notNull().default(false),
-  priceCents: integer('price_cents'),
-  currency: text('currency').notNull().default('USD'),
-  printifyMockupUrls: text('printify_mockup_urls').array().notNull().default([]),
-  priceRationale: text('price_rationale'),
+  editedByUser: boolean('edited_by_user').notNull().default(false),
+  photosUploadedAt: timestamp('photos_uploaded_at', { withTimezone: true }),
+  photosCount: integer('photos_count').notNull().default(0),
+  photosFailureReason: text('photos_failure_reason'),
 });
 
 export const nicheLibrary = pgTable('niche_library', {
@@ -82,8 +83,20 @@ export const settings = pgTable('settings', {
   defaultPrintProviderId: integer('default_print_provider_id'),
   defaultVariants: jsonb('default_variants'),
   etsyShopId: text('etsy_shop_id'),
-  printifyShopId: text('printify_shop_id'),
   killSwitchActive: boolean('kill_switch_active').notNull().default(false),
+  printifySetupAt: timestamp('printify_setup_at', { withTimezone: true }),
+  priceOffsetCents: integer('price_offset_cents').notNull().default(100),
+  minPriceFloorCents: integer('min_price_floor_cents').notNull().default(1499),
+  etsyUserId: bigint('etsy_user_id', { mode: 'number' }),
+  etsyShopIdOauth: bigint('etsy_shop_id_oauth', { mode: 'number' }),
+  etsyAccessToken: text('etsy_access_token'),
+  etsyRefreshToken: text('etsy_refresh_token'),
+  etsyTokenExpiresAt: timestamp('etsy_token_expires_at', { withTimezone: true }),
+  mockupSelection: jsonb('mockup_selection'),
+  // The Printify product ID the seller has fully configured in the dashboard
+  // (blueprint, all colors/sizes, per-variant prices, curated mockups). Every
+  // publish clones this product's spec with our new design swapped in.
+  masterPrintifyProductId: text('master_printify_product_id'),
 });
 
 export const generationEvents = pgTable('generation_events', {
@@ -94,6 +107,75 @@ export const generationEvents = pgTable('generation_events', {
   payload: jsonb('payload').notNull().default({}),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
+
+export const shirtTemplates = pgTable('shirt_templates', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  label: text('label').notNull(),
+  blueprintId: integer('blueprint_id').notNull(),
+  providerId: integer('provider_id'),
+  variantIds: integer('variant_ids').array().notNull().default([]),
+  colorName: text('color_name'),
+  colorHex: text('color_hex'),
+  blankImageUrl: text('blank_image_url').notNull(),
+  // printArea is { x, y, w, h } in 0-1 fractions of the blank image dimensions.
+  // Defaults center-chest: x=0.3, y=0.28, w=0.4, h=0.36.
+  printArea: jsonb('print_area').notNull(),
+  isDefault: boolean('is_default').notNull().default(false),
+  source: text('source').notNull().default('upload'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export type ShirtTemplate = typeof shirtTemplates.$inferSelect;
+
+export const stockImages = pgTable('stock_images', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  prompt: text('prompt').notNull(),
+  style: text('style').notNull().default('digital_illustration'),
+  blobUrl: text('blob_url').notNull(),
+  tags: text('tags').array().notNull().default([]),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export type StockImage = typeof stockImages.$inferSelect;
+
+export const customMockups = pgTable('custom_mockups', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  designId: uuid('design_id').references(() => designs.id).notNull(),
+  sceneName: text('scene_name').notNull(),
+  blobUrl: text('blob_url').notNull(),
+  uploadedToEtsyAt: timestamp('uploaded_to_etsy_at', { withTimezone: true }),
+  etsyImageId: text('etsy_image_id'),
+  etsyListingId: text('etsy_listing_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export type CustomMockup = typeof customMockups.$inferSelect;
+
+export const printifyCatalogCache = pgTable('printify_catalog_cache', {
+  id: integer('id').primaryKey().default(1),
+  blueprints: jsonb('blueprints').notNull(),
+  providers: jsonb('providers').notNull(),
+  fetchedAt: timestamp('fetched_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export type PrintifyCatalogCache = typeof printifyCatalogCache.$inferSelect;
+
+export const etsyPriceSamples = pgTable('etsy_price_samples', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  query: text('query').notNull(),
+  queryHash: text('query_hash').notNull().unique(),
+  sampleCount: integer('sample_count').notNull(),
+  minCents: integer('min_cents').notNull(),
+  p25Cents: integer('p25_cents').notNull(),
+  medianCents: integer('median_cents').notNull(),
+  p75Cents: integer('p75_cents').notNull(),
+  maxCents: integer('max_cents').notNull(),
+  rawPrices: jsonb('raw_prices').notNull(),
+  fetchedAt: timestamp('fetched_at', { withTimezone: true }).defaultNow().notNull(),
+  status: text('status').notNull().default('ok'),
+});
+
+export type EtsyPriceSample = typeof etsyPriceSamples.$inferSelect;
 
 export type Batch = typeof batches.$inferSelect;
 export type NewBatch = typeof batches.$inferInsert;

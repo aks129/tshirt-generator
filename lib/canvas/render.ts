@@ -1,12 +1,45 @@
 export const PRINT_W = 3000; // 10" @ 300dpi
 export const PRINT_H = 3600; // 12" @ 300dpi
 
+export type ImagePosition = 'above' | 'below' | 'behind';
+
+export type StockImageLayer = {
+  url: string;
+  position: ImagePosition;
+  /** 0.3–1.5: scales the image relative to its allocated slot. 1 = fills the
+   *  slot at the natural aspect ratio. <1 = smaller with whitespace. >1 = grows
+   *  beyond the slot (clipped at canvas edges). Default 1. */
+  scale?: number;
+  /** -0.3 to 0.3: shifts the image horizontally as a fraction of canvas width.
+   *  0 = centered in its slot. Default 0. */
+  offsetX?: number;
+  /** -0.3 to 0.3: shifts the image vertically as a fraction of canvas height.
+   *  0 = centered in its slot. Default 0. */
+  offsetY?: number;
+};
+
 export type RenderSettings = {
   font: string;
   textColor: string;
   hAlign: 'left' | 'center' | 'right';
   vAlign: 'top' | 'middle' | 'bottom';
+  /** Slider value 10-48 from the bulk generator. The renderer multiplies
+   *  this by SIZE_SCALE to get a target print-pixel size, then scales down
+   *  only if the text wouldn't fit. Optional for back-compat; defaults to
+   *  auto-fit-from-large behavior when omitted. */
+  fontSize?: number;
+  /** Optional stock illustration composited per `position`:
+   *   - 'above': image fills top 40% of print area, text fits below
+   *   - 'below': image fills bottom 40%, text above
+   *   - 'behind': image fills 80% of canvas centered, text overlaid */
+  image?: StockImageLayer;
 };
+
+// Slider value × this = target print-pixel size. Derived from the
+// preview design area (124px wide) vs the print usable width (2800px),
+// which gives ~22.6×. Rounded up to 24 for a cleaner small-text floor.
+const SIZE_SCALE = 24;
+const PADDING = 100;
 
 function wrapTextLines(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
   const lines: string[] = [];
@@ -27,12 +60,83 @@ function wrapTextLines(ctx: CanvasRenderingContext2D, text: string, maxWidth: nu
   return lines;
 }
 
+async function loadImage(url: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`Image load failed: ${url}`));
+    img.src = url;
+  });
+}
+
+/** Returns the {x, y, w, h} region the image should occupy on the print canvas. */
+function imageRegion(position: ImagePosition): { x: number; y: number; w: number; h: number } {
+  if (position === 'above') {
+    return { x: PADDING, y: PADDING, w: PRINT_W - PADDING * 2, h: Math.floor((PRINT_H - PADDING * 2) * 0.4) };
+  }
+  if (position === 'below') {
+    const h = Math.floor((PRINT_H - PADDING * 2) * 0.4);
+    return { x: PADDING, y: PRINT_H - PADDING - h, w: PRINT_W - PADDING * 2, h };
+  }
+  // behind
+  const w = Math.floor((PRINT_W - PADDING * 2) * 0.8);
+  const h = Math.floor((PRINT_H - PADDING * 2) * 0.8);
+  return { x: (PRINT_W - w) / 2, y: (PRINT_H - h) / 2, w, h };
+}
+
+/** Returns the rectangle the text should fit within, given the image layer. */
+function textRegion(position: ImagePosition | undefined): { x: number; y: number; w: number; h: number } {
+  const maxW = PRINT_W - PADDING * 2;
+  const maxH = PRINT_H - PADDING * 2;
+  if (!position) return { x: PADDING, y: PADDING, w: maxW, h: maxH };
+
+  if (position === 'above') {
+    const imgH = Math.floor(maxH * 0.4);
+    const gap = 80;
+    const y = PADDING + imgH + gap;
+    return { x: PADDING, y, w: maxW, h: PRINT_H - PADDING - y };
+  }
+  if (position === 'below') {
+    const imgH = Math.floor(maxH * 0.4);
+    const gap = 80;
+    return { x: PADDING, y: PADDING, w: maxW, h: maxH - imgH - gap };
+  }
+  // behind: text occupies the whole canvas, overlaid on the image
+  return { x: PADDING, y: PADDING, w: maxW, h: maxH };
+}
+
 export async function renderRowToBlob(text: string, settings: RenderSettings): Promise<Blob> {
   const trimmed = (text || '').trim();
+  const canvas = document.createElement('canvas');
+  canvas.width = PRINT_W;
+  canvas.height = PRINT_H;
+  const ctx = canvas.getContext('2d')!;
+  ctx.clearRect(0, 0, PRINT_W, PRINT_H);
+
+  // Draw the image layer first (if present). For 'behind', it goes under text;
+  // for 'above'/'below', it just sits in its slot.
+  if (settings.image) {
+    try {
+      const img = await loadImage(settings.image.url);
+      const r = imageRegion(settings.image.position);
+      const scale = settings.image.scale ?? 1;
+      const offsetX = settings.image.offsetX ?? 0;
+      const offsetY = settings.image.offsetY ?? 0;
+      // Fit by 'contain' to preserve aspect ratio, then apply user scale.
+      const baseRatio = Math.min(r.w / img.width, r.h / img.height);
+      const ratio = baseRatio * scale;
+      const drawW = img.width * ratio;
+      const drawH = img.height * ratio;
+      const drawX = r.x + (r.w - drawW) / 2 + offsetX * PRINT_W;
+      const drawY = r.y + (r.h - drawH) / 2 + offsetY * PRINT_H;
+      ctx.drawImage(img, drawX, drawY, drawW, drawH);
+    } catch {
+      // Skip image silently; text still renders. Operator can re-pick.
+    }
+  }
+
   if (!trimmed) {
-    const canvas = document.createElement('canvas');
-    canvas.width = PRINT_W;
-    canvas.height = PRINT_H;
     return new Promise((res) => canvas.toBlob((b) => res(b!), 'image/png'));
   }
 
@@ -40,16 +144,13 @@ export async function renderRowToBlob(text: string, settings: RenderSettings): P
     await document.fonts.load(`bold 200px ${settings.font}`, trimmed);
   } catch {}
 
-  const canvas = document.createElement('canvas');
-  canvas.width = PRINT_W;
-  canvas.height = PRINT_H;
-  const ctx = canvas.getContext('2d')!;
-  ctx.clearRect(0, 0, PRINT_W, PRINT_H);
+  const region = textRegion(settings.image?.position);
+  const maxW = region.w;
+  const maxH = region.h;
 
-  const padding = 100;
-  const maxW = PRINT_W - padding * 2;
-  const maxH = PRINT_H - padding * 2;
-  let fontSize = 600;
+  let fontSize = settings.fontSize != null
+    ? Math.max(40, settings.fontSize * SIZE_SCALE)
+    : 600;
   let lines: string[] = [];
   while (fontSize > 40) {
     ctx.font = `bold ${fontSize}px ${settings.font}`;
@@ -69,12 +170,12 @@ export async function renderRowToBlob(text: string, settings: RenderSettings): P
   const totalH = lineH * lines.length;
 
   let yStart: number;
-  if (settings.vAlign === 'top') yStart = padding;
-  else if (settings.vAlign === 'bottom') yStart = PRINT_H - padding - totalH;
-  else yStart = (PRINT_H - totalH) / 2;
+  if (settings.vAlign === 'top') yStart = region.y;
+  else if (settings.vAlign === 'bottom') yStart = region.y + region.h - totalH;
+  else yStart = region.y + (region.h - totalH) / 2;
 
   ctx.textAlign = settings.hAlign === 'left' ? 'left' : settings.hAlign === 'right' ? 'right' : 'center';
-  const x = settings.hAlign === 'left' ? padding : settings.hAlign === 'right' ? PRINT_W - padding : PRINT_W / 2;
+  const x = settings.hAlign === 'left' ? region.x : settings.hAlign === 'right' ? region.x + region.w : region.x + region.w / 2;
 
   lines.forEach((ln, i) => {
     ctx.fillText(ln, x, yStart + i * lineH);

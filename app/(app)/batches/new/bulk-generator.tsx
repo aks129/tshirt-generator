@@ -11,6 +11,11 @@ import {
 } from '@/lib/canvas/fonts';
 import { renderRowToBlob, safeFileName, downloadBlob, type RenderSettings } from '@/lib/canvas/render';
 import { makeZip } from '@/lib/canvas/zip';
+import { upload } from '@vercel/blob/client';
+import { THEMES, type Theme } from '@/lib/themes/library';
+import { TipsPanel } from './tips-panel';
+import { StockLibrary, type StockImage } from './stock-library';
+import type { ImagePosition } from '@/lib/canvas/render';
 
 type Row = { id: number; text: string };
 
@@ -20,7 +25,61 @@ type Settings = RenderSettings & {
   shirtColor: string;
 };
 
-const DEFAULT_FONT = BUILT_IN_FONTS[7]; // Archivo Black
+type ShirtTemplate = {
+  id: string;
+  label: string;
+  blueprintId: number;
+  providerId: number | null;
+  colorName: string | null;
+  colorHex: string | null;
+  blankImageUrl: string;
+  printArea: { x: number; y: number; w: number; h: number };
+  isDefault: boolean;
+  source: string;
+};
+
+const IMAGE_POSITION_OPTIONS: { value: ImagePosition; label: string }[] = [
+  { value: 'above', label: '⬆ Above text' },
+  { value: 'below', label: '⬇ Below text' },
+  { value: 'behind', label: '◯ Behind text' },
+];
+
+// Special Elite — typewriter feel that reads cleanly at thumbnail size.
+// Anchors as the default until the user picks something else; localStorage
+// then takes over on subsequent visits.
+const DEFAULT_FONT = BUILT_IN_FONTS.find((f) => f.name === 'Special Elite') ?? BUILT_IN_FONTS[0];
+const DEFAULT_SETTINGS: Settings = {
+  font: DEFAULT_FONT.family,
+  fontName: DEFAULT_FONT.name,
+  fontSize: 10,
+  textColor: '#1a1a1a',
+  shirtColor: '#ffffff',
+  hAlign: 'center',
+  vAlign: 'top',
+};
+const SETTINGS_STORAGE_KEY = 'bulk-generator-settings-v1';
+
+// The image URL is persisted in localStorage and replayed into <img src>. It is
+// only ever a Vercel Blob https URL (or a transient blob:/data:image object URL),
+// but localStorage is attacker-writable in principle, so constrain the scheme to
+// a safe allowlist before rendering — rejects javascript:/data:text-html payloads.
+function safeImageSrc(url: string | undefined | null): string | undefined {
+  if (!url) return undefined;
+  return /^(https?:|blob:|data:image\/)/i.test(url) ? url : undefined;
+}
+
+function loadStoredSettings(): Settings {
+  if (typeof window === 'undefined') return DEFAULT_SETTINGS;
+  try {
+    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (!raw) return DEFAULT_SETTINGS;
+    const parsed = JSON.parse(raw) as Partial<Settings>;
+    // Merge over defaults so new fields stay sane if the stored shape is stale.
+    return { ...DEFAULT_SETTINGS, ...parsed };
+  } catch {
+    return DEFAULT_SETTINGS;
+  }
+}
 
 export function BulkGenerator() {
   const router = useRouter();
@@ -31,24 +90,51 @@ export function BulkGenerator() {
   const [customFonts, setCustomFonts] = useState<BuiltInFont[]>([]);
   const allFonts = useMemo<BuiltInFont[]>(() => [...BUILT_IN_FONTS, ...customFonts], [customFonts]);
 
-  const [settings, setSettings] = useState<Settings>({
-    font: DEFAULT_FONT.family,
-    fontName: DEFAULT_FONT.name,
-    fontSize: 22,
-    textColor: '#1a1a1a',
-    shirtColor: '#ffffff',
-    hAlign: 'center',
-    vAlign: 'middle',
-  });
+  // SSR-safe init: useState callback only runs once on mount.
+  const [settings, setSettings] = useState<Settings>(() => loadStoredSettings());
+
+  // Persist on every change. The work is cheap (single JSON.stringify into
+  // localStorage), so no debounce needed.
+  useEffect(() => {
+    try {
+      localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+    } catch {
+      /* quota errors / private mode — just skip */
+    }
+  }, [settings]);
 
   const [busy, setBusy] = useState(false);
   const [busyText, setBusyText] = useState('');
   const [view, setView] = useState<'editor' | 'grid'>('editor');
   const [gridBg, setGridBg] = useState<'checker' | 'white' | 'black'>('checker');
+  const [themesOpen, setThemesOpen] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [templates, setTemplates] = useState<ShirtTemplate[]>([]);
+  const [templateId, setTemplateId] = useState<string | null>(null);
 
   useEffect(() => {
     preloadAllFonts();
   }, []);
+
+  useEffect(() => {
+    fetch('/api/shirt-templates')
+      .then((r) => r.json())
+      .then((j) => {
+        if (!j.ok) return;
+        const list: ShirtTemplate[] = j.templates;
+        setTemplates(list);
+        // Auto-select the shop default on first load if the operator hasn't
+        // picked anything yet.
+        if (templateId === null) {
+          const def = list.find((t) => t.isDefault);
+          if (def) setTemplateId(def.id);
+        }
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const template = templates.find((t) => t.id === templateId) ?? null;
 
   const updateRow = (id: number, patch: Partial<Row>) =>
     setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
@@ -80,6 +166,32 @@ export function BulkGenerator() {
     setRows(lines.map((t, i) => ({ id: i + 1, text: t })));
   };
 
+  const applyTheme = (theme: Theme, mode: 'replace' | 'append') => {
+    if (mode === 'replace') {
+      setRows(theme.slogans.map((t, i) => ({ id: i + 1, text: t })));
+      setSelectedId(1);
+    } else {
+      setRows((rs) => {
+        const base = (rs[rs.length - 1]?.id || 0);
+        const next = [...rs, ...theme.slogans.map((t, i) => ({ id: base + i + 1, text: t }))];
+        return next;
+      });
+    }
+    setThemesOpen(false);
+  };
+
+  const pickTheme = (theme: Theme) => {
+    const visibleCount = rows.filter((r) => (r.text || '').trim()).length;
+    if (visibleCount === 0) {
+      applyTheme(theme, 'replace');
+      return;
+    }
+    const replace = confirm(
+      `Replace your current ${visibleCount} row${visibleCount === 1 ? '' : 's'} with ${theme.slogans.length} "${theme.label}" slogans?\n\nOK = replace · Cancel = append`,
+    );
+    applyTheme(theme, replace ? 'replace' : 'append');
+  };
+
   const handleFontUpload = useCallback(async (file: File) => {
     if (!file) return;
     const buf = await file.arrayBuffer();
@@ -103,6 +215,8 @@ export function BulkGenerator() {
     textColor: settings.textColor,
     hAlign: settings.hAlign,
     vAlign: settings.vAlign,
+    fontSize: settings.fontSize,
+    image: settings.image,
   };
 
   const exportOne = async (row: Row) => {
@@ -138,30 +252,46 @@ export function BulkGenerator() {
     if (!visible.length) return;
     setBusy(true);
     try {
-      const fd = new FormData();
-      fd.append(
-        'meta',
-        JSON.stringify({
-          fontName: settings.fontName,
-          font: settings.font,
-          textColor: settings.textColor,
-          hAlign: settings.hAlign,
-          vAlign: settings.vAlign,
-          shirtColor: settings.shirtColor,
-        }),
-      );
+      const batchKey = Date.now().toString(36);
+      const uploaded: { text: string; blobUrl: string }[] = [];
       for (let i = 0; i < visible.length; i++) {
         const r = visible[i];
-        setBusyText(`Rendering ${i + 1} / ${visible.length}…`);
+        setBusyText(`Rendering & uploading ${i + 1} / ${visible.length}…`);
         const blob = await renderRowToBlob(r.text, renderSettings);
-        fd.append(`design[${i}][text]`, r.text);
-        fd.append(`design[${i}][png]`, blob, `${safeFileName(r.text, `shirt_${r.id}`)}.png`);
+        const filename = `designs/bulk/${batchKey}/${String(i + 1).padStart(3, '0')}_${safeFileName(r.text, `shirt_${r.id}`)}.png`;
+        const result = await upload(filename, blob, {
+          access: 'public',
+          handleUploadUrl: '/api/bulk-batches/upload-token',
+          contentType: 'image/png',
+        });
+        uploaded.push({ text: r.text, blobUrl: result.url });
         await new Promise((res) => setTimeout(res, 0));
       }
-      setBusyText('Uploading…');
-      const res = await fetch('/api/bulk-batches', { method: 'POST', body: fd });
+      setBusyText('Saving batch…');
+      const res = await fetch('/api/bulk-batches', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          meta: {
+            fontName: settings.fontName,
+            font: settings.font,
+            textColor: settings.textColor,
+            hAlign: settings.hAlign,
+            vAlign: settings.vAlign,
+            shirtColor: settings.shirtColor,
+            fontSize: settings.fontSize,
+            image: settings.image ?? null,
+          },
+          designs: uploaded,
+        }),
+      });
+      const ct = res.headers.get('content-type') || '';
+      if (!ct.includes('application/json')) {
+        const txt = await res.text();
+        throw new Error(`Server returned ${res.status}: ${txt.slice(0, 200)}`);
+      }
       const json = await res.json();
-      if (!res.ok || !json.ok) throw new Error(json.error || `Upload failed (${res.status})`);
+      if (!res.ok || !json.ok) throw new Error(json.error || `Save failed (${res.status})`);
       router.push(`/batches/${json.batchId}`);
     } catch (err) {
       alert(err instanceof Error ? err.message : String(err));
@@ -204,8 +334,37 @@ export function BulkGenerator() {
             Grid ({visibleCount})
           </button>
         </div>
-        <button className={btnGhost} onClick={pasteList}>📋 Paste list</button>
-        <button className={btnGhost} onClick={() => replaceAll(SAMPLE_TEXT)}>↺ Sample</button>
+        <div className="relative">
+          <button type="button" className={btnGhost} onClick={() => setThemesOpen((o) => !o)}>🎨 Themes</button>
+          {themesOpen && (
+            <>
+              <div className="fixed inset-0 z-[40]" onClick={() => setThemesOpen(false)} />
+              <div className="absolute right-0 z-50 mt-1 w-72 rounded-md border border-zinc-200 bg-white p-1 shadow-lg">
+                {THEMES.map((t) => (
+                  <button
+                    type="button"
+                    key={t.slug}
+                    onClick={() => pickTheme(t)}
+                    className="flex w-full items-start gap-2 rounded px-2.5 py-2 text-left hover:bg-zinc-50"
+                  >
+                    <span className="text-lg leading-none">{t.emoji}</span>
+                    <span className="flex-1">
+                      <span className="block text-sm font-medium text-zinc-900">
+                        {t.label} <span className="text-xs font-normal text-zinc-500">({t.slogans.length})</span>
+                      </span>
+                      <span className="block text-xs text-zinc-500">{t.description}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+        <button type="button" className={btnGhost} onClick={() => setLibraryOpen(true)}>
+          🖼 Stock library{settings.image ? ' ✓' : ''}
+        </button>
+        <button type="button" className={btnGhost} onClick={pasteList}>📋 Paste list</button>
+        <button type="button" className={btnGhost} onClick={() => replaceAll(SAMPLE_TEXT)}>↺ Sample</button>
         <button className={btnGhost} onClick={() => replaceAll('')}>✕ Clear</button>
         <button
           className={btnGhost}
@@ -240,6 +399,7 @@ export function BulkGenerator() {
           <aside className="overflow-y-auto rounded-xl border border-zinc-200 bg-white p-4">
             <Section label="Font">
               <select
+                aria-label="Font family"
                 value={settings.fontName}
                 onChange={(e) => {
                   const f = allFonts.find((x) => x.name === e.target.value);
@@ -287,7 +447,7 @@ export function BulkGenerator() {
               )}
             </Section>
 
-            <Section label="Text size (preview)">
+            <Section label="Text size">
               <input
                 type="range"
                 min={10}
@@ -296,7 +456,7 @@ export function BulkGenerator() {
                 onChange={(e) => setSettings({ ...settings, fontSize: Number(e.target.value) })}
                 className="w-full"
               />
-              <div className={muted}>{settings.fontSize}px (export auto-fits)</div>
+              <div className={muted}>{settings.fontSize} — applied to print export (scaled down only if text overflows)</div>
             </Section>
 
             <Section label="Text color">
@@ -307,7 +467,40 @@ export function BulkGenerator() {
               />
             </Section>
 
-            <Section label="Shirt color (preview only)">
+            <Section label="Shirt template (preview backdrop)">
+              {templates.length === 0 ? (
+                <div className="rounded-md border border-dashed border-zinc-300 bg-zinc-50 p-2 text-[11px] text-zinc-500">
+                  No templates saved.{' '}
+                  <a href="/settings" className="text-blue-600 underline">
+                    Add one in settings
+                  </a>{' '}
+                  to preview your designs on real shirt photos.
+                </div>
+              ) : (
+                <select
+                  aria-label="Shirt template"
+                  value={templateId ?? ''}
+                  onChange={(e) => setTemplateId(e.target.value || null)}
+                  className="w-full rounded-md border border-zinc-300 bg-white px-2.5 py-2 text-sm"
+                >
+                  <option value="">— None (use color preset) —</option>
+                  {templates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.label}{t.isDefault ? ' (default)' : ''}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {template && (
+                <div className="mt-1.5 text-[10px] text-zinc-500">
+                  blueprint {template.blueprintId}
+                  {template.providerId ? ` · provider ${template.providerId}` : ''}
+                  {template.colorName ? ` · ${template.colorName}` : ''}
+                </div>
+              )}
+            </Section>
+
+            <Section label="Shirt color (used when no template)">
               <div className="flex flex-wrap items-center gap-1.5">
                 {SHIRT_PRESETS.map((c) => (
                   <button
@@ -328,6 +521,7 @@ export function BulkGenerator() {
                   onChange={(e) => setSettings({ ...settings, shirtColor: e.target.value })}
                   className="h-7 w-7 cursor-pointer rounded-md border border-zinc-300 bg-transparent p-0"
                   title="Custom shirt color"
+                  aria-label="Custom shirt color"
                 />
               </div>
               <div className={muted + ' mt-1'}>PNG export has no shirt — print-ready transparent bg.</div>
@@ -357,9 +551,116 @@ export function BulkGenerator() {
               />
             </Section>
 
+            <Section label="Stock image (optional)">
+              {settings.image ? (
+                <div className="space-y-2">
+                  <div className="rounded-md border border-violet-300 bg-violet-50 p-2">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={safeImageSrc(settings.image.url)} alt="" className="aspect-square w-full rounded object-contain" />
+                  </div>
+                  <select
+                    aria-label="Image position"
+                    value={settings.image.position}
+                    onChange={(e) =>
+                      setSettings({
+                        ...settings,
+                        image: { ...settings.image!, position: e.target.value as ImagePosition },
+                      })
+                    }
+                    className="w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-xs"
+                  >
+                    {IMAGE_POSITION_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                  <div className="space-y-1.5 rounded-md border border-zinc-200 bg-zinc-50 p-2">
+                    <SliderRow
+                      label="Size"
+                      value={Math.round((settings.image.scale ?? 1) * 100)}
+                      unit="%"
+                      min={30}
+                      max={150}
+                      onChange={(v) =>
+                        setSettings({
+                          ...settings,
+                          image: { ...settings.image!, scale: v / 100 },
+                        })
+                      }
+                    />
+                    <SliderRow
+                      label="↔ Shift"
+                      value={Math.round((settings.image.offsetX ?? 0) * 100)}
+                      unit="%"
+                      min={-30}
+                      max={30}
+                      onChange={(v) =>
+                        setSettings({
+                          ...settings,
+                          image: { ...settings.image!, offsetX: v / 100 },
+                        })
+                      }
+                    />
+                    <SliderRow
+                      label="↕ Shift"
+                      value={Math.round((settings.image.offsetY ?? 0) * 100)}
+                      unit="%"
+                      min={-30}
+                      max={30}
+                      onChange={(v) =>
+                        setSettings({
+                          ...settings,
+                          image: { ...settings.image!, offsetY: v / 100 },
+                        })
+                      }
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSettings({
+                          ...settings,
+                          image: { ...settings.image!, scale: 1, offsetX: 0, offsetY: 0 },
+                        })
+                      }
+                      className="text-[10px] text-zinc-500 hover:text-zinc-900 underline"
+                    >
+                      Reset size + position
+                    </button>
+                  </div>
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setLibraryOpen(true)}
+                      className="flex-1 rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-[11px] hover:bg-zinc-50"
+                    >
+                      Change
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSettings({ ...settings, image: undefined })}
+                      className="flex-1 rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-[11px] text-zinc-600 hover:bg-zinc-50"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setLibraryOpen(true)}
+                  className="w-full rounded-md border border-dashed border-zinc-400 bg-zinc-50 px-2 py-2 text-xs text-zinc-600 hover:bg-zinc-100"
+                >
+                  + Pick from stock library
+                </button>
+              )}
+            </Section>
+
             <p className="border-t border-zinc-200 pt-3 text-[11px] leading-relaxed text-zinc-500">
               Settings apply to <strong>all</strong> shirts. Click a row to preview it with the current style.
             </p>
+
+            <div className="mt-4">
+              <TipsPanel />
+            </div>
           </aside>
 
           {/* CENTER — list */}
@@ -439,9 +740,15 @@ export function BulkGenerator() {
             {selected ? (
               <>
                 <div className="flex justify-center rounded-lg bg-zinc-100 p-3.5">
-                  <ShirtPreview color={settings.shirtColor}>
-                    <DesignContent row={selected} settings={settings} />
-                  </ShirtPreview>
+                  {template ? (
+                    <TemplatePreview template={template}>
+                      <DesignContent row={selected} settings={settings} />
+                    </TemplatePreview>
+                  ) : (
+                    <ShirtPreview color={settings.shirtColor}>
+                      <DesignContent row={selected} settings={settings} />
+                    </ShirtPreview>
+                  )}
                 </div>
                 <div className="text-sm leading-relaxed">
                   <div className="font-semibold">
@@ -473,6 +780,24 @@ export function BulkGenerator() {
           </div>
         </div>
       )}
+
+      {libraryOpen && (
+        <StockLibrary
+          selectedUrl={settings.image?.url ?? null}
+          onPick={(img: StockImage | null) => {
+            if (img) {
+              setSettings({
+                ...settings,
+                image: { url: img.blobUrl, position: settings.image?.position ?? 'above' },
+              });
+            } else {
+              setSettings({ ...settings, image: undefined });
+            }
+            setLibraryOpen(false);
+          }}
+          onClose={() => setLibraryOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -492,6 +817,33 @@ function Section({ label, children }: { label: string; children: React.ReactNode
     <div className="mb-4">
       <div className="mb-1.5 text-[11px] font-bold uppercase tracking-wider text-zinc-600">{label}</div>
       {children}
+    </div>
+  );
+}
+
+function SliderRow({
+  label, value, unit, min, max, onChange,
+}: {
+  label: string;
+  value: number;
+  unit: string;
+  min: number;
+  max: number;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2 text-[11px]">
+      <span className="w-12 text-zinc-600">{label}</span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        aria-label={label}
+        className="flex-1"
+      />
+      <span className="w-10 text-right tabular-nums text-zinc-500">{value}{unit}</span>
     </div>
   );
 }
@@ -539,7 +891,10 @@ function ColorRow({
       {presets.map((c) => (
         <button
           key={c}
+          type="button"
           onClick={() => onChange(c)}
+          aria-label={`Color ${c}`}
+          title={c}
           className="h-6 w-6 rounded-md cursor-pointer"
           style={{ background: c, border: value === c ? '2px solid #2a6df4' : '1px solid #ccc' }}
         />
@@ -549,7 +904,44 @@ function ColorRow({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className="h-6 w-6 cursor-pointer rounded-md border border-zinc-300 bg-transparent p-0"
+        aria-label="Custom color"
+        title="Custom color"
       />
+    </div>
+  );
+}
+
+function TemplatePreview({
+  template,
+  children,
+  size = 240,
+}: {
+  template: ShirtTemplate;
+  children: React.ReactNode;
+  size?: number;
+}) {
+  // template.printArea is in 0-1 fractions of the blank image. The preview
+  // anchors the children inside that rectangle, overlaid on the photo.
+  const pa = template.printArea;
+  return (
+    <div className="relative" style={{ width: size, height: size }}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={template.blankImageUrl}
+        alt={template.label}
+        className="h-full w-full rounded object-contain"
+      />
+      <div
+        className="absolute overflow-hidden"
+        style={{
+          left: `${pa.x * 100}%`,
+          top: `${pa.y * 100}%`,
+          width: `${pa.w * 100}%`,
+          height: `${pa.h * 100}%`,
+        }}
+      >
+        {children}
+      </div>
     </div>
   );
 }
@@ -591,6 +983,105 @@ function ShirtPreview({
 function DesignContent({ row, settings }: { row: Row; settings: Settings }) {
   const justify = { left: 'flex-start', center: 'center', right: 'flex-end' }[settings.hAlign];
   const align = { top: 'flex-start', middle: 'center', bottom: 'flex-end' }[settings.vAlign];
+
+  const textBlock = (
+    <div
+      style={{
+        fontFamily: settings.font,
+        color: settings.textColor,
+        fontSize: settings.fontSize,
+        lineHeight: 1.05,
+        textAlign: settings.hAlign,
+        textWrap: 'balance',
+        fontWeight: 700,
+        width: '100%',
+      }}
+    >
+      {row.text || <span style={{ opacity: 0.3 }}>(empty)</span>}
+    </div>
+  );
+
+  const img = settings.image;
+  const imgScale = img?.scale ?? 1;
+  const imgOffsetX = (img?.offsetX ?? 0) * 100; // % of preview width
+  const imgOffsetY = (img?.offsetY ?? 0) * 100; // % of preview height
+  const imgTransform = `translate(${imgOffsetX}%, ${imgOffsetY}%) scale(${imgScale})`;
+
+  if (img?.position === 'behind') {
+    return (
+      <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={safeImageSrc(img.url)}
+          alt=""
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            objectFit: 'contain',
+            opacity: 0.7,
+            transform: imgTransform,
+            transformOrigin: 'center',
+          }}
+        />
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: align,
+            alignItems: justify,
+            padding: 4,
+            boxSizing: 'border-box',
+          }}
+        >
+          {textBlock}
+        </div>
+      </div>
+    );
+  }
+
+  if (img?.position === 'above' || img?.position === 'below') {
+    return (
+      <div
+        style={{
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          flexDirection: img.position === 'above' ? 'column' : 'column-reverse',
+          gap: 4,
+          padding: 4,
+          boxSizing: 'border-box',
+        }}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={safeImageSrc(img.url)}
+          alt=""
+          style={{
+            width: '100%',
+            height: '40%',
+            objectFit: 'contain',
+            transform: imgTransform,
+            transformOrigin: 'center',
+          }}
+        />
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            justifyContent: justify,
+            alignItems: 'center',
+          }}
+        >
+          {textBlock}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       style={{
@@ -604,20 +1095,7 @@ function DesignContent({ row, settings }: { row: Row; settings: Settings }) {
         boxSizing: 'border-box',
       }}
     >
-      <div
-        style={{
-          fontFamily: settings.font,
-          color: settings.textColor,
-          fontSize: settings.fontSize,
-          lineHeight: 1.05,
-          textAlign: settings.hAlign,
-          textWrap: 'balance',
-          fontWeight: 700,
-          width: '100%',
-        }}
-      >
-        {row.text || <span style={{ opacity: 0.3 }}>(empty)</span>}
-      </div>
+      {textBlock}
     </div>
   );
 }

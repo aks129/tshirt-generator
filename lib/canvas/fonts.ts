@@ -5,16 +5,43 @@ export type BuiltInFont = {
 };
 
 export const BUILT_IN_FONTS: BuiltInFont[] = [
-  { name: 'Caveat', family: "'Caveat', cursive", url: 'https://fonts.googleapis.com/css2?family=Caveat:wght@400;700&display=swap' },
-  { name: 'Bebas Neue', family: "'Bebas Neue', sans-serif", url: 'https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap' },
-  { name: 'Anton', family: "'Anton', sans-serif", url: 'https://fonts.googleapis.com/css2?family=Anton&display=swap' },
-  { name: 'Bungee', family: "'Bungee', cursive", url: 'https://fonts.googleapis.com/css2?family=Bungee&display=swap' },
-  { name: 'Permanent Marker', family: "'Permanent Marker', cursive", url: 'https://fonts.googleapis.com/css2?family=Permanent+Marker&display=swap' },
-  { name: 'Playfair Display', family: "'Playfair Display', serif", url: 'https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&display=swap' },
-  { name: 'JetBrains Mono', family: "'JetBrains Mono', monospace", url: 'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap' },
-  { name: 'Archivo Black', family: "'Archivo Black', sans-serif", url: 'https://fonts.googleapis.com/css2?family=Archivo+Black&display=swap' },
+  // Defaults / typewriter
   { name: 'Special Elite', family: "'Special Elite', cursive", url: 'https://fonts.googleapis.com/css2?family=Special+Elite&display=swap' },
+  // Bold display sans (top sellers)
+  { name: 'Anton', family: "'Anton', sans-serif", url: 'https://fonts.googleapis.com/css2?family=Anton&display=swap' },
+  { name: 'Archivo Black', family: "'Archivo Black', sans-serif", url: 'https://fonts.googleapis.com/css2?family=Archivo+Black&display=swap' },
+  { name: 'Bebas Neue', family: "'Bebas Neue', sans-serif", url: 'https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap' },
+  { name: 'Oswald', family: "'Oswald', sans-serif", url: 'https://fonts.googleapis.com/css2?family=Oswald:wght@400;700&display=swap' },
+  { name: 'Staatliches', family: "'Staatliches', sans-serif", url: 'https://fonts.googleapis.com/css2?family=Staatliches&display=swap' },
+  { name: 'Russo One', family: "'Russo One', sans-serif", url: 'https://fonts.googleapis.com/css2?family=Russo+One&display=swap' },
+  { name: 'Righteous', family: "'Righteous', sans-serif", url: 'https://fonts.googleapis.com/css2?family=Righteous&display=swap' },
   { name: 'Rubik Mono One', family: "'Rubik Mono One', sans-serif", url: 'https://fonts.googleapis.com/css2?family=Rubik+Mono+One&display=swap' },
+  { name: 'Six Caps', family: "'Six Caps', sans-serif", url: 'https://fonts.googleapis.com/css2?family=Six+Caps&display=swap' },
+  // Heavy / display
+  { name: 'Bowlby One', family: "'Bowlby One', sans-serif", url: 'https://fonts.googleapis.com/css2?family=Bowlby+One&display=swap' },
+  { name: 'Bagel Fat One', family: "'Bagel Fat One', sans-serif", url: 'https://fonts.googleapis.com/css2?family=Bagel+Fat+One&display=swap' },
+  { name: 'Lilita One', family: "'Lilita One', sans-serif", url: 'https://fonts.googleapis.com/css2?family=Lilita+One&display=swap' },
+  { name: 'Black Ops One', family: "'Black Ops One', sans-serif", url: 'https://fonts.googleapis.com/css2?family=Black+Ops+One&display=swap' },
+  { name: 'Bungee', family: "'Bungee', cursive", url: 'https://fonts.googleapis.com/css2?family=Bungee&display=swap' },
+  // Comic / playful
+  { name: 'Bangers', family: "'Bangers', cursive", url: 'https://fonts.googleapis.com/css2?family=Bangers&display=swap' },
+  { name: 'Permanent Marker', family: "'Permanent Marker', cursive", url: 'https://fonts.googleapis.com/css2?family=Permanent+Marker&display=swap' },
+  { name: 'Cabin Sketch', family: "'Cabin Sketch', cursive", url: 'https://fonts.googleapis.com/css2?family=Cabin+Sketch:wght@400;700&display=swap' },
+  // Slab serif
+  { name: 'Alfa Slab One', family: "'Alfa Slab One', serif", url: 'https://fonts.googleapis.com/css2?family=Alfa+Slab+One&display=swap' },
+  { name: 'Patua One', family: "'Patua One', serif", url: 'https://fonts.googleapis.com/css2?family=Patua+One&display=swap' },
+  // Display serif
+  { name: 'Playfair Display', family: "'Playfair Display', serif", url: 'https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&display=swap' },
+  { name: 'Abril Fatface', family: "'Abril Fatface', serif", url: 'https://fonts.googleapis.com/css2?family=Abril+Fatface&display=swap' },
+  // Script / cursive
+  { name: 'Caveat', family: "'Caveat', cursive", url: 'https://fonts.googleapis.com/css2?family=Caveat:wght@400;700&display=swap' },
+  { name: 'Lobster', family: "'Lobster', cursive", url: 'https://fonts.googleapis.com/css2?family=Lobster&display=swap' },
+  { name: 'Pacifico', family: "'Pacifico', cursive", url: 'https://fonts.googleapis.com/css2?family=Pacifico&display=swap' },
+  // Monospace / techy
+  { name: 'JetBrains Mono', family: "'JetBrains Mono', monospace", url: 'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap' },
+  { name: 'Audiowide', family: "'Audiowide', sans-serif", url: 'https://fonts.googleapis.com/css2?family=Audiowide&display=swap' },
+  { name: 'Press Start 2P', family: "'Press Start 2P', monospace", url: 'https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap' },
+  { name: 'Monoton', family: "'Monoton', sans-serif", url: 'https://fonts.googleapis.com/css2?family=Monoton&display=swap' },
 ];
 
 export const SHIRT_PRESETS: { name: string; value: string }[] = [

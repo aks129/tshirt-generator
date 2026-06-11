@@ -3,6 +3,7 @@ import { batches, designs, listings } from '@/lib/db/schema';
 import { eq, inArray } from 'drizzle-orm';
 import { notFound } from 'next/navigation';
 import { ReviewGrid } from './review-grid';
+import { DeleteBatchButton } from './delete-batch-button';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,9 +20,12 @@ export default async function BatchPage({ params }: { params: Promise<{ id: stri
   const enriched = designRows.map((d) => ({ ...d, listing: listingByDesign[d.id] ?? null }));
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold">Review batch</h1>
-        <p className="text-sm text-zinc-500">{batch.prompt}</p>
+      <header className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold">Review batch</h1>
+          <p className="text-sm text-zinc-500">{batch.prompt}</p>
+        </div>
+        <DeleteBatchButton batchId={batch.id} />
       </header>
       <ReviewGrid initialBatch={batch} initialDesigns={enriched} />
     </div>

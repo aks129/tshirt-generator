@@ -4,46 +4,44 @@ import { db } from '@/lib/db/client';
 import { settings } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 
-const updateSchema = z.object({
-  printifyShopId: z.string().min(1).optional(),
-  defaultPrintifyBlueprintId: z.number().int().positive().optional(),
-  defaultPrintProviderId: z.number().int().positive().optional(),
-  defaultVariants: z.array(z.number().int().positive()).optional(),
-});
-
 export const runtime = 'nodejs';
 
-export async function GET() {
-  const [row] = await db.select().from(settings).where(eq(settings.id, 1));
-  return NextResponse.json({ ok: true, settings: row ?? null });
-}
+const bodySchema = z.object({
+  masterPrintifyProductId: z.string().min(1).nullable(),
+  dailyGenerationCap: z.number().int().min(1),
+  dailyPublishCap: z.number().int().min(1),
+  dailyBudgetCents: z.number().int().min(0),
+  killSwitchActive: z.boolean(),
+  priceOffsetCents: z.number().int().min(0),
+  minPriceFloorCents: z.number().int().min(500),
+  mockupSelection: z
+    .object({ labels: z.array(z.string().min(1).max(64)).max(9) })
+    .nullable()
+    .optional(),
+  // Optional default template — not used by the master-product publish path;
+  // stored as a reference default for the generator/AI workflow.
+  defaultPrintifyBlueprintId: z.number().int().nullable().optional(),
+  defaultPrintProviderId: z.number().int().nullable().optional(),
+  defaultVariants: z
+    .object({ variantIds: z.array(z.number().int()) })
+    .nullable()
+    .optional(),
+});
 
-export async function POST(req: Request) {
-  const body = await req.json();
-  const parsed = updateSchema.safeParse(body);
+export async function PUT(req: Request) {
+  const raw = await req.json().catch(() => null);
+  const parsed = bodySchema.safeParse(raw);
   if (!parsed.success) {
-    return NextResponse.json({ ok: false, error: parsed.error.message }, { status: 400 });
+    return NextResponse.json({ ok: false, error: 'Invalid body' }, { status: 400 });
   }
-  const patch = parsed.data;
 
-  // Upsert (id is always 1 for the singleton row).
   await db
-    .insert(settings)
-    .values({ id: 1, ...patch })
-    .onConflictDoUpdate({
-      target: settings.id,
-      set: {
-        ...(patch.printifyShopId !== undefined && { printifyShopId: patch.printifyShopId }),
-        ...(patch.defaultPrintifyBlueprintId !== undefined && {
-          defaultPrintifyBlueprintId: patch.defaultPrintifyBlueprintId,
-        }),
-        ...(patch.defaultPrintProviderId !== undefined && {
-          defaultPrintProviderId: patch.defaultPrintProviderId,
-        }),
-        ...(patch.defaultVariants !== undefined && { defaultVariants: patch.defaultVariants }),
-      },
-    });
+    .update(settings)
+    .set({
+      ...parsed.data,
+      printifySetupAt: parsed.data.masterPrintifyProductId ? new Date() : null,
+    })
+    .where(eq(settings.id, 1));
 
-  const [row] = await db.select().from(settings).where(eq(settings.id, 1));
-  return NextResponse.json({ ok: true, settings: row });
+  return NextResponse.json({ ok: true });
 }

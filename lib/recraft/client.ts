@@ -5,6 +5,7 @@ export async function generateImage(opts: {
   style: RecraftStyle;
   substyle?: string;
   idempotencyKey?: string;
+  size?: string;
 }): Promise<string> {
   const apiKey = process.env.RECRAFT_API_KEY;
   if (!apiKey) throw new Error('RECRAFT_API_KEY not set');
@@ -13,7 +14,7 @@ export async function generateImage(opts: {
     prompt: opts.prompt,
     style: opts.style,
     substyle: opts.substyle,
-    size: '2048x2048',
+    size: opts.size ?? '2048x2048',
     response_format: 'url',
     n: 1,
   };
