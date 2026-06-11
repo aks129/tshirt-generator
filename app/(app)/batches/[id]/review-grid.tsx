@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { DesignCard } from '@/components/DesignCard';
 import { PublishModal } from './publish-modal';
 import { BatchPublish } from './batch-publish';
+import { StatusBadge } from '@/components/status-badge';
 import type { Batch, Design } from '@/lib/db/schema';
 
 export function ReviewGrid({ initialBatch, initialDesigns }: { initialBatch: Batch; initialDesigns: Design[] }) {
@@ -31,12 +32,12 @@ export function ReviewGrid({ initialBatch, initialDesigns }: { initialBatch: Bat
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between text-sm text-zinc-500">
-        <span>Status: {batch.status}</span>
+      <div className="flex items-center justify-between text-sm">
+        <StatusBadge status={batch.status} />
         {pendingDesigns.length > 0 && (
           <button
             type="button"
-            className="rounded-md bg-black px-3 py-1.5 text-sm text-white"
+            className="press rounded-full bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground shadow-sm hover:opacity-92"
             onClick={() => setModalDesign(pendingDesigns[0])}
           >
             Approve all and draft ({pendingDesigns.length})

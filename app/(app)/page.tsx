@@ -2,9 +2,10 @@ import Link from 'next/link';
 import { db } from '@/lib/db/client';
 import { batches, designs, listings } from '@/lib/db/schema';
 import { desc, sql, gte, eq, or } from 'drizzle-orm';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { RecentBatches } from './recent-batches';
 import { AiHealthCard } from './ai-health-card';
+import { StatusBadge } from '@/components/status-badge';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -45,31 +46,37 @@ export default async function Dashboard() {
   return (
     <div className="space-y-8">
       {needsSetup && (
-        <div className="flex items-center justify-between rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm">
-          <span>⚠ Set up Printify before publishing.</span>
-          <Link href="/settings" className="rounded-md bg-zinc-900 px-3 py-1.5 text-xs text-white">Open settings</Link>
-        </div>
+        <Banner text="Set up Printify before publishing." href="/settings" cta="Open settings" />
       )}
-
       {!needsSetup && needsEtsy && hasLiveListings && (
-        <div className="flex items-center justify-between rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm">
-          <span>⚠ Connect Etsy to add extra photos to your listings.</span>
-          <Link href="/settings" className="rounded-md bg-zinc-900 px-3 py-1.5 text-xs text-white">Open settings</Link>
-        </div>
+        <Banner text="Connect Etsy to add extra photos to your listings." href="/settings" cta="Open settings" />
       )}
 
-      <header className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Dashboard</h1>
-        <Link href="/batches/new" className="rounded-md bg-black px-4 py-2 text-sm text-white">
-          Start new batch
+      <header className="anim-rise flex items-end justify-between">
+        <div>
+          <h1 className="font-display text-3xl font-bold tracking-tight">The press is warm.</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Design → review → publish. Your tees, on Etsy, without the busywork.
+          </p>
+        </div>
+        <Link
+          href="/batches/new"
+          className="press rounded-full bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground shadow-sm hover:opacity-92"
+        >
+          + New batch
         </Link>
       </header>
 
       <section className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <StatCard label="Generated (7d)" value={weekStats?.generated ?? 0} />
-        <StatCard label="Approved (7d)" value={weekStats?.approved ?? 0} />
-        <StatCard label="Live listings (7d)" value={weekStats?.live ?? 0} />
-        <StatCard label="Today" value={`${todayStats?.count ?? 0} / $${((todayStats?.spent ?? 0) / 100).toFixed(2)}`} />
+        <StatCard className="anim-rise anim-rise-1" label="Generated · 7d" value={weekStats?.generated ?? 0} icon="✏️" />
+        <StatCard className="anim-rise anim-rise-2" label="Approved · 7d" value={weekStats?.approved ?? 0} icon="✅" />
+        <StatCard className="anim-rise anim-rise-3" label="Live on Etsy · 7d" value={weekStats?.live ?? 0} icon="🏪" accent />
+        <StatCard
+          className="anim-rise anim-rise-4"
+          label="Today"
+          value={`${todayStats?.count ?? 0} · $${((todayStats?.spent ?? 0) / 100).toFixed(2)}`}
+          icon="📅"
+        />
       </section>
 
       <section>
@@ -78,14 +85,14 @@ export default async function Dashboard() {
 
       {publishQueue.length > 0 && (
         <section>
-          <h2 className="mb-3 text-lg font-medium">Publish queue</h2>
-          <Card>
+          <h2 className="mb-3 font-display text-lg font-semibold">On the press</h2>
+          <Card className="card-lift overflow-hidden py-0">
             <CardContent className="p-0">
               <ul className="divide-y">
                 {publishQueue.map((q) => (
-                  <li key={q.id} className="flex items-center justify-between px-4 py-2 text-sm">
+                  <li key={q.id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
                     <span className="truncate">{q.title}</span>
-                    <span className="text-xs text-zinc-500">{q.status}</span>
+                    <StatusBadge status={q.status} />
                   </li>
                 ))}
               </ul>
@@ -95,8 +102,8 @@ export default async function Dashboard() {
       )}
 
       <section>
-        <h2 className="mb-3 text-lg font-medium">Recent batches</h2>
-        <Card>
+        <h2 className="mb-3 font-display text-lg font-semibold">Recent batches</h2>
+        <Card className="card-lift overflow-hidden py-0">
           <CardContent className="p-0">
             <ul className="divide-y">
               <RecentBatches rows={recent.map((b) => ({ id: b.id, prompt: b.prompt, status: b.status }))} />
@@ -108,11 +115,40 @@ export default async function Dashboard() {
   );
 }
 
-function StatCard({ label, value }: { label: string; value: string | number }) {
+function Banner({ text, href, cta }: { text: string; href: string; cta: string }) {
   return (
-    <Card>
-      <CardHeader className="pb-1"><CardTitle className="text-xs font-normal text-zinc-500">{label}</CardTitle></CardHeader>
-      <CardContent><div className="text-2xl font-semibold">{value}</div></CardContent>
+    <div className="flex items-center justify-between rounded-xl border border-amber-300/70 bg-amber-50 px-4 py-3 text-sm">
+      <span>⚠ {text}</span>
+      <Link href={href} className="press rounded-full bg-foreground px-3.5 py-1.5 text-xs font-medium text-background">
+        {cta}
+      </Link>
+    </div>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  icon,
+  accent,
+  className = '',
+}: {
+  label: string;
+  value: string | number;
+  icon: string;
+  accent?: boolean;
+  className?: string;
+}) {
+  return (
+    <Card className={`card-lift relative overflow-hidden ${accent ? 'border-primary/40' : ''} ${className}`}>
+      {accent && <div className="absolute inset-x-0 top-0 h-1 bg-primary" />}
+      <CardContent className="flex items-start justify-between gap-2 pt-1">
+        <div>
+          <div className="text-xs text-muted-foreground">{label}</div>
+          <div className="mt-1 font-display text-3xl font-bold tracking-tight">{value}</div>
+        </div>
+        <span aria-hidden className="text-lg opacity-80">{icon}</span>
+      </CardContent>
     </Card>
   );
 }

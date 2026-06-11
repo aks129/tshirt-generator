@@ -12,26 +12,30 @@ export function GeneratorTabs({ niches }: { niches: Niche[] }) {
 
   return (
     <div className="space-y-4">
-      <div className="inline-flex rounded-lg border border-zinc-200 bg-zinc-50 p-1 text-sm">
+      <div className="inline-flex rounded-full border bg-secondary p-1 text-sm">
         <button
           type="button"
           onClick={() => setMode('paste')}
           className={
-            'rounded-md px-3 py-1.5 ' +
-            (mode === 'paste' ? 'bg-white font-medium shadow-sm' : 'text-zinc-500 hover:text-zinc-800')
+            'press rounded-full px-4 py-1.5 transition-colors ' +
+            (mode === 'paste'
+              ? 'bg-card font-medium text-foreground shadow-sm ring-1 ring-foreground/10'
+              : 'text-muted-foreground hover:text-foreground')
           }
         >
-          Paste list
+          ✂️ Paste list
         </button>
         <button
           type="button"
           onClick={() => setMode('ai')}
           className={
-            'rounded-md px-3 py-1.5 ' +
-            (mode === 'ai' ? 'bg-white font-medium shadow-sm' : 'text-zinc-500 hover:text-zinc-800')
+            'press rounded-full px-4 py-1.5 transition-colors ' +
+            (mode === 'ai'
+              ? 'bg-card font-medium text-foreground shadow-sm ring-1 ring-foreground/10'
+              : 'text-muted-foreground hover:text-foreground')
           }
         >
-          Generate with AI
+          ✨ Generate with AI
         </button>
       </div>
 

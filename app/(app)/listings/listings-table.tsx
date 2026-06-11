@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Image from 'next/image';
 import type { Concept } from '@/lib/schemas';
 import { MockupGallery } from './mockup-gallery';
+import { StatusBadge } from '@/components/status-badge';
 
 type Row = {
   id: string;
@@ -113,10 +114,10 @@ export function ListingsTable({ rows }: { rows: Row[] }) {
             type="button"
             onClick={() => setFilter(s)}
             className={
-              'rounded-full border px-3 py-1 text-xs ' +
+              'press rounded-full border px-3.5 py-1 text-xs transition-colors ' +
               (filter === s
-                ? 'border-zinc-900 bg-zinc-900 text-white'
-                : 'border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50')
+                ? 'border-foreground bg-foreground font-medium text-background'
+                : 'border-border bg-card text-muted-foreground hover:text-foreground')
             }
           >
             {s}
@@ -124,28 +125,28 @@ export function ListingsTable({ rows }: { rows: Row[] }) {
         ))}
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
-        <table className="min-w-full divide-y divide-zinc-200">
-          <thead className="bg-zinc-50">
+      <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+        <table className="min-w-full divide-y">
+          <thead className="bg-secondary/60">
             <tr>
-              <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">Design</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">Title</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">Status</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">Photos</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">Links</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">Created</th>
+              <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Design</th>
+              <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Title</th>
+              <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status</th>
+              <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Photos</th>
+              <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Links</th>
+              <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Created</th>
               <th />
             </tr>
           </thead>
-          <tbody className="divide-y divide-zinc-100">
+          <tbody className="divide-y">
             {filtered.map((r) => {
               const concept = r.designHeadline as Concept | null;
               return (
-                <tr key={r.id} className="hover:bg-zinc-50">
+                <tr key={r.id} className="transition-colors hover:bg-secondary/50">
                   <td className="w-16 px-3 py-2">
                     {r.designMockupUrl && (
-                      <div className="relative h-12 w-12 overflow-hidden rounded">
-                        <Image src={r.designMockupUrl} alt="" fill className="object-cover" unoptimized />
+                      <div className="relative h-12 w-12 overflow-hidden rounded-lg bg-secondary ring-1 ring-foreground/10">
+                        <Image src={r.designMockupUrl} alt="" fill className="object-contain p-1" unoptimized />
                       </div>
                     )}
                   </td>
@@ -258,8 +259,9 @@ export function ListingsTable({ rows }: { rows: Row[] }) {
             })}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-3 py-12 text-center text-sm text-zinc-500">
-                  No listings yet.
+                <td colSpan={7} className="px-3 py-14 text-center text-sm text-muted-foreground">
+                  <span className="mb-1 block text-2xl" aria-hidden>👕</span>
+                  No listings yet — approve a design and hit publish.
                 </td>
               </tr>
             )}
@@ -279,16 +281,3 @@ export function ListingsTable({ rows }: { rows: Row[] }) {
   );
 }
 
-function StatusBadge({ status }: { status: Row['status'] }) {
-  const COLORS: Record<Row['status'], string> = {
-    publishing: 'bg-indigo-100 text-indigo-800',
-    publishing_slow: 'bg-amber-100 text-amber-800',
-    live: 'bg-emerald-100 text-emerald-800',
-    failed: 'bg-red-100 text-red-700',
-  };
-  return (
-    <span className={`inline-block rounded-full px-2 py-0.5 text-xs ${COLORS[status]}`}>
-      {status}
-    </span>
-  );
-}

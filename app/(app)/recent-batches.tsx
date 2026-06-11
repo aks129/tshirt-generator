@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { StatusBadge } from '@/components/status-badge';
 
 type Row = {
   id: string;
@@ -31,23 +32,28 @@ export function RecentBatches({ rows }: { rows: Row[] }) {
 
   const visible = rows.filter((r) => !hiddenIds.has(r.id));
   if (visible.length === 0) {
-    return <li className="px-4 py-6 text-sm text-zinc-500">No batches yet.</li>;
+    return (
+      <li className="px-4 py-10 text-center text-sm text-muted-foreground">
+        <span className="mb-1 block text-2xl" aria-hidden>🧵</span>
+        Nothing on the rack yet — start your first batch.
+      </li>
+    );
   }
 
   return (
     <>
       {visible.map((b) => (
-        <li key={b.id} className="flex items-center hover:bg-zinc-50">
-          <Link href={`/batches/${b.id}`} className="flex flex-1 items-center justify-between px-4 py-3">
+        <li key={b.id} className="flex items-center transition-colors hover:bg-secondary/60">
+          <Link href={`/batches/${b.id}`} className="flex flex-1 items-center justify-between gap-3 px-4 py-3">
             <span className="truncate">{b.prompt}</span>
-            <span className="text-xs text-zinc-500">{b.status}</span>
+            <StatusBadge status={b.status} />
           </Link>
           <button
             type="button"
             aria-label="Delete batch"
             disabled={deletingId === b.id}
             onClick={() => deleteBatch(b.id)}
-            className="mr-3 rounded p-1.5 text-zinc-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+            className="press mr-3 rounded-full p-1.5 text-muted-foreground/60 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
           >
             {deletingId === b.id ? '…' : '🗑'}
           </button>
