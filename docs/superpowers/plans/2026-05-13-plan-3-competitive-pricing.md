@@ -12,7 +12,7 @@
 
 **Prerequisites already in place:**
 - Plan 2 done: publish modal, `POST /api/listings`, `createProduct(priceCents)` parameter, `/settings` page
-- Existing first listing live (id `eea6e512-02ad-4b2d-9453-193c0deb8036`, Etsy listing `4504330542`) — proves the publish path works
+- Existing first listing live (id `eea6e512-02ad-4b2d-9453-193c0deb8036`, Etsy listing `<ETSY_LISTING_ID>`) — proves the publish path works
 - Neon, Vercel Blob, all env vars from Plans 1–2
 
 ---
@@ -1584,7 +1584,7 @@ Expected: deployment status `ok`.
 
 - [ ] **Step 3: Smoke against production**
 
-Open https://tshirt-generator-one.vercel.app
+Open https://<your-prod-domain>
 
 1. Log in with `teeshirts` password.
 2. Open `/batches/new`, make a small bulk batch with 1 design (slogan: "Coffee First").

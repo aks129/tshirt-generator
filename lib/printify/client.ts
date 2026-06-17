@@ -42,7 +42,7 @@ export async function printifyFetch<T>(
     method: opts.method ?? 'GET',
     headers: {
       Authorization: `Bearer ${key}`,
-      'User-Agent': 'tshirt-generator/0.1 (eugene.vestel@gmail.com)',
+      'User-Agent': process.env.PRINTIFY_USER_AGENT ?? 'tshirt-generator/0.1',
       'content-type': 'application/json;charset=utf-8',
     },
   };

@@ -18,8 +18,8 @@ describe('uploadEtsyListingImage', () => {
 
     const r = await uploadEtsyListingImage({
       accessToken: 'abc.token',
-      shopId: 65981312,
-      listingId: '4504330542',
+      shopId: 87654321,
+      listingId: '4444455555',
       imageBuffer: Buffer.from('JPEGBYTES'),
       filename: 'design_1.jpg',
       rank: 2,
@@ -30,7 +30,7 @@ describe('uploadEtsyListingImage', () => {
     expect(r.url).toBe('https://i.etsy/full');
 
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(String(url)).toBe('https://openapi.etsy.com/v3/application/shops/65981312/listings/4504330542/images');
+    expect(String(url)).toBe('https://openapi.etsy.com/v3/application/shops/87654321/listings/4444455555/images');
     const headers = (init as RequestInit).headers as Record<string, string>;
     expect(headers.Authorization).toBe('Bearer abc.token');
     expect(headers['x-api-key']).toBe('kkk:sss');

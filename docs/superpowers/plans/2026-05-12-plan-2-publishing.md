@@ -4,7 +4,7 @@
 
 **Goal:** Turn approved designs into live Etsy listings via Printify. Approve button opens a modal with AI-drafted listing copy that the user can edit; Publish creates a Printify product, uploads the design, and triggers Printify's Etsy publish flow. New `/listings` and `/settings` pages. Vercel Cron daily reconciliation. ~20 designs live by end of week.
 
-**Architecture:** Route-handler-based publish (no Workflow DevKit — Plan 1's prod headaches don't justify carrying it). Single-user, single Printify shop (`PRINTIFY_SHOP_ID=27519707`, the Etsy-linked shop). Gemini Flash for listing copy. Existing Plan 1 infrastructure (auth, DB, Blob, review queue, content safety) is reused.
+**Architecture:** Route-handler-based publish (no Workflow DevKit — Plan 1's prod headaches don't justify carrying it). Single-user, single Printify shop (`PRINTIFY_SHOP_ID=<PRINTIFY_SHOP_ID>`, the Etsy-linked shop). Gemini Flash for listing copy. Existing Plan 1 infrastructure (auth, DB, Blob, review queue, content safety) is reused.
 
 **Tech Stack:** Plan 1 stack + Printify REST API (no SDK; plain fetch) + Vercel Cron.
 
@@ -13,7 +13,7 @@
 **Prerequisites already in place:**
 - Plan 1 code merged + production deployed
 - Neon DB migrated and seeded
-- `PRINTIFY_API_KEY` + `PRINTIFY_SHOP_ID=27519707` set in `.env.local` and Vercel production env
+- `PRINTIFY_API_KEY` + `PRINTIFY_SHOP_ID=<PRINTIFY_SHOP_ID>` set in `.env.local` and Vercel production env
 - Etsy-linked Printify shop verified (sales_channel: 'etsy')
 
 ---
@@ -301,7 +301,7 @@ import { printifyFetch } from '@/lib/printify/client';
 
 beforeEach(() => {
   vi.stubEnv('PRINTIFY_API_KEY', 'test-key');
-  vi.stubEnv('PRINTIFY_SHOP_ID', '27519707');
+  vi.stubEnv('PRINTIFY_SHOP_ID', '<PRINTIFY_SHOP_ID>');
 });
 
 describe('printifyFetch', () => {
@@ -392,7 +392,7 @@ export async function printifyFetch<T>(
     method: opts.method ?? 'GET',
     headers: {
       Authorization: `Bearer ${key}`,
-      'User-Agent': 'tshirt-generator/0.1 (eugene.vestel@gmail.com)',
+      'User-Agent': 'tshirt-generator/0.1 (you@example.com)',
       'content-type': 'application/json;charset=utf-8',
     },
   };
@@ -445,7 +445,7 @@ import { printifyFetch } from '@/lib/printify/client';
 import { uploadImageByUrl } from '@/lib/printify/upload-image';
 
 beforeEach(() => {
-  vi.stubEnv('PRINTIFY_SHOP_ID', '27519707');
+  vi.stubEnv('PRINTIFY_SHOP_ID', '<PRINTIFY_SHOP_ID>');
 });
 
 describe('uploadImageByUrl', () => {
@@ -525,15 +525,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('@/lib/printify/client', () => ({
   printifyFetch: vi.fn(),
-  getShopId: vi.fn(() => '27519707'),
-  shopPath: vi.fn((s: string) => `/shops/27519707${s}`),
+  getShopId: vi.fn(() => '<PRINTIFY_SHOP_ID>'),
+  shopPath: vi.fn((s: string) => `/shops/<PRINTIFY_SHOP_ID>${s}`),
 }));
 
 import { printifyFetch } from '@/lib/printify/client';
 import { createProduct } from '@/lib/printify/create-product';
 
 beforeEach(() => {
-  vi.stubEnv('PRINTIFY_SHOP_ID', '27519707');
+  vi.stubEnv('PRINTIFY_SHOP_ID', '<PRINTIFY_SHOP_ID>');
 });
 
 describe('createProduct', () => {
@@ -556,7 +556,7 @@ describe('createProduct', () => {
     });
     expect(r.productId).toBe('prod_xyz');
     const [path, opts] = vi.mocked(printifyFetch).mock.calls[0];
-    expect(path).toBe('/shops/27519707/products.json');
+    expect(path).toBe('/shops/<PRINTIFY_SHOP_ID>/products.json');
     const body = (opts as { body: Record<string, unknown> }).body;
     expect(body).toMatchObject({
       blueprint_id: 6,
@@ -652,8 +652,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('@/lib/printify/client', () => ({
   printifyFetch: vi.fn(),
-  getShopId: vi.fn(() => '27519707'),
-  shopPath: vi.fn((s: string) => `/shops/27519707${s}`),
+  getShopId: vi.fn(() => '<PRINTIFY_SHOP_ID>'),
+  shopPath: vi.fn((s: string) => `/shops/<PRINTIFY_SHOP_ID>${s}`),
 }));
 
 import { printifyFetch } from '@/lib/printify/client';
@@ -661,7 +661,7 @@ import { publishProduct } from '@/lib/printify/publish-product';
 import { getProduct } from '@/lib/printify/get-product';
 
 beforeEach(() => {
-  vi.stubEnv('PRINTIFY_SHOP_ID', '27519707');
+  vi.stubEnv('PRINTIFY_SHOP_ID', '<PRINTIFY_SHOP_ID>');
 });
 
 describe('publishProduct', () => {
@@ -669,7 +669,7 @@ describe('publishProduct', () => {
     vi.mocked(printifyFetch).mockResolvedValueOnce({});
     await publishProduct('prod_xyz');
     const [path, opts] = vi.mocked(printifyFetch).mock.calls[0];
-    expect(path).toBe('/shops/27519707/products/prod_xyz/publish.json');
+    expect(path).toBe('/shops/<PRINTIFY_SHOP_ID>/products/prod_xyz/publish.json');
     expect((opts as { body: Record<string, unknown> }).body).toEqual({
       title: true, description: true, images: true, variants: true, tags: true,
     });
@@ -2961,7 +2961,7 @@ git push origin feature/plan-1 && vercel --prod --yes 2>&1 | tail -5
 
 - [ ] **Step 3: Settings smoke**
 
-Open https://tshirt-generator-one.vercel.app/settings (login: `teeshirts`).
+Open https://<your-prod-domain>/settings (login: `teeshirts`).
 - Pick a print provider
 - Check variants table loads
 - Select a few white/black/grey × S/M/L variants
@@ -2992,7 +2992,7 @@ Manually invoke the cron route to confirm auth + reconcile path:
 
 ```bash
 curl -s -H "Authorization: Bearer $(awk -F= '/^CRON_SECRET=/ {gsub(/^"|"$/, "", $2); print $2}' .env.local)" \
-  https://tshirt-generator-one.vercel.app/api/cron/reconcile | python3 -m json.tool
+  https://<your-prod-domain>/api/cron/reconcile | python3 -m json.tool
 ```
 
 Expected output:

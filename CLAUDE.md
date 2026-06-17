@@ -21,7 +21,7 @@ pnpm db:generate       # drizzle-kit generate (after editing lib/db/schema.ts)
 pnpm db:migrate        # apply pending migrations to DATABASE_URL
 pnpm db:seed           # one-off seed (lib/db/seed.ts)
 
-vercel --prod --yes    # production deploy (auto-aliased to tshirt-generator-one.vercel.app)
+vercel --prod --yes    # production deploy (auto-aliased to the project's prod domain)
 ```
 
 The Vercel CLI is the deploy path; there's no GitHub Actions CD. `vercel env add NAME production` to add prod env vars; `vercel env pull .env.local` to sync down.
@@ -170,7 +170,7 @@ Workflow:
 
 ## Auth
 
-`middleware.ts` cookie-gates everything except `PUBLIC_PATHS`. Env vars: `APP_PASSWORD` (single shared password, `tshirts` in dev), `AUTH_COOKIE_SECRET` (jose signing, ≥32 chars). For curl testing: `POST /api/auth/login` with `{"password":"..."}` → use `-c/-b` cookie jar.
+`middleware.ts` cookie-gates everything except `PUBLIC_PATHS`. Env vars: `APP_PASSWORD` (single shared login password, set per environment), `AUTH_COOKIE_SECRET` (jose signing, ≥32 chars). For curl testing: `POST /api/auth/login` with `{"password":"..."}` → use `-c/-b` cookie jar.
 
 ## AI providers
 

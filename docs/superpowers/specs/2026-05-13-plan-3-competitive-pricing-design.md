@@ -3,7 +3,7 @@
 **Date:** 2026-05-13
 **Status:** Approved, ready for implementation planning
 **Owner:** Eugene Vestel
-**Builds on:** Plan 1 (foundation + bulk generator) + Plan 2 (Printify + Etsy publishing). First listing live at Etsy listing ID 4504330542 / Printify product 6a04642ad54e5aa2fa00cdeb.
+**Builds on:** Plan 1 (foundation + bulk generator) + Plan 2 (Printify + Etsy publishing). First listing live at Etsy listing ID <ETSY_LISTING_ID> / Printify product <PRINTIFY_PRODUCT_ID>.
 
 ## 1. Purpose & Goals
 
