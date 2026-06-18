@@ -46,6 +46,33 @@ describe('runPublish', () => {
     vi.mocked(getProduct).mockReset();
   });
 
+  it('calls onProductCreated with the new product id BEFORE publishing (orphan-prevention hook)', async () => {
+    vi.mocked(fetchMasterProduct).mockResolvedValueOnce(masterStub);
+    vi.mocked(uploadImageByUrl).mockResolvedValueOnce({ imageId: 'img_1', previewUrl: '', width: 0, height: 0 });
+    vi.mocked(createProductFromMaster).mockResolvedValueOnce({ productId: 'prod_new' });
+    const order: string[] = [];
+    vi.mocked(publishProduct).mockImplementationOnce(async () => { order.push('publish'); });
+    vi.mocked(getProduct).mockResolvedValue({ productId: 'prod_new', etsyListingId: '1', etsyUrl: 'u', visible: true, isLocked: false });
+    const onProductCreated = vi.fn(async () => { order.push('persist'); });
+
+    await runPublish({ ...baseInput, onProductCreated });
+
+    expect(onProductCreated).toHaveBeenCalledWith('prod_new');
+    // Persist must happen before publish so a crash mid-publish is recoverable.
+    expect(order).toEqual(['persist', 'publish']);
+  });
+
+  it('does NOT call onProductCreated when reusing a preCreatedProductId (no re-clone)', async () => {
+    vi.mocked(publishProduct).mockResolvedValueOnce(undefined);
+    vi.mocked(getProduct).mockResolvedValue({ productId: 'p_existing', etsyListingId: '1', etsyUrl: 'u', visible: true, isLocked: false });
+    const onProductCreated = vi.fn(async () => {});
+
+    await runPublish({ ...baseInput, preCreatedProductId: 'p_existing', onProductCreated });
+
+    expect(vi.mocked(createProductFromMaster)).not.toHaveBeenCalled();
+    expect(onProductCreated).not.toHaveBeenCalled();
+  });
+
   it('returns live when external_handle appears within poll window', async () => {
     vi.mocked(fetchMasterProduct).mockResolvedValueOnce(masterStub);
     vi.mocked(uploadImageByUrl).mockResolvedValueOnce({ imageId: 'img_1', previewUrl: '', width: 0, height: 0 });

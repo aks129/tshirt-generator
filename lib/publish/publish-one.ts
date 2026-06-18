@@ -109,6 +109,11 @@ export async function publishOneDesign(
       tags: copy.tags,
       basePriceCents,
       preCreatedProductId,
+      // Record the product id the moment it's cloned so a retry after a
+      // mid-publish crash reuses it instead of minting an orphan.
+      onProductCreated: async (productId) => {
+        await db.update(listings).set({ printifyProductId: productId }).where(eq(listings.id, listingId));
+      },
     });
 
     if (result.status === 'live') {

@@ -28,6 +28,11 @@ export async function runPublish(input: {
   pollIntervalMs?: number;
   pollTimeoutMs?: number;
   preCreatedProductId?: string;
+  /** Invoked with the Printify product id the instant it is created, BEFORE
+   *  publish/poll. Lets the caller persist it immediately so a retry (after a
+   *  crash/timeout during publish or poll) reuses the product via
+   *  preCreatedProductId instead of cloning a duplicate (orphan). */
+  onProductCreated?: (productId: string) => Promise<void>;
 }): Promise<PublishResult> {
   // Default poll budget is tight on purpose: Vercel function maxDuration is
   // 60s. Safety + upload + create + publish already costs ~15-25s. 30s of
@@ -54,6 +59,10 @@ export async function runPublish(input: {
       basePriceCents: input.basePriceCents ?? null,
     });
     productId = created.productId;
+    // Persist the id NOW (before publish/poll) so an uncaught failure in the
+    // steps below leaves a recoverable record — a retry reuses this product
+    // instead of cloning an orphan.
+    if (input.onProductCreated) await input.onProductCreated(productId);
   }
 
   await publishProduct(productId);
