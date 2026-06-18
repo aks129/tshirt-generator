@@ -3,7 +3,6 @@ import { db } from '@/lib/db/client';
 import { etsyPriceSamples, type Settings } from '@/lib/db/schema';
 import { buildQuery, queryHash, type ConceptLike } from './build-query';
 import { scrapeEtsySearch, type ScrapeResult } from './search-scraper';
-import { erankSearch } from './erank-client';
 import { etsyOpenApiSearch } from './open-api-client';
 import { computeStats, type PriceStats } from './stats';
 
@@ -18,10 +17,6 @@ function fetchCompetitiveData(query: string): Promise<ScrapeResult> {
   // Preferred: Etsy's own Open API (official, free, no scraping).
   if (process.env.USE_ETSY_OPEN_API === 'true' && process.env.ETSY_API_KEY) {
     return etsyOpenApiSearch(query);
-  }
-  // Backup: eRank API (currently no API — scaffold kept for future / pivot).
-  if (process.env.USE_ERANK === 'true' && process.env.ERANK_API_KEY) {
-    return erankSearch(query);
   }
   // Fallback: public-search scraper. Returns 'captcha' from Vercel IPs;
   // graceful degradation handles that downstream.

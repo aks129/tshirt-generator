@@ -3,7 +3,7 @@ import { printifyFetch } from '@/lib/printify/client';
 
 beforeEach(() => {
   vi.stubEnv('PRINTIFY_API_KEY', 'test-key');
-  vi.stubEnv('PRINTIFY_SHOP_ID', '27519707');
+  vi.stubEnv('PRINTIFY_SHOP_ID', '12345678');
 });
 
 describe('printifyFetch', () => {

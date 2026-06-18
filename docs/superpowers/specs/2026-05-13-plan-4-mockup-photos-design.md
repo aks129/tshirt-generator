@@ -3,7 +3,7 @@
 **Date:** 2026-05-13
 **Status:** Approved, ready for implementation planning
 **Owner:** Eugene Vestel
-**Builds on:** Plan 1 (foundation + bulk generator) + Plan 2 (Printify+Etsy publish) + Plan 3 (competitive pricing + Etsy Open API). Live at `https://tshirt-generator-one.vercel.app`. 2 listings live, 4 publishing/queued.
+**Builds on:** Plan 1 (foundation + bulk generator) + Plan 2 (Printify+Etsy publish) + Plan 3 (competitive pricing + Etsy Open API). Live at `https://<your-prod-domain>`. 2 listings live, 4 publishing/queued.
 
 ## 1. Purpose & Goals
 
@@ -93,7 +93,7 @@ BACKFILL (daily cron + on-demand)
 
 Existing Etsy API key (from Plan 3) works for both public reads and OAuth. Add redirect URIs to the Etsy app config (one-time, in Etsy developer dashboard):
 
-- Production: `https://tshirt-generator-one.vercel.app/api/etsy/oauth/callback`
+- Production: `https://<your-prod-domain>/api/etsy/oauth/callback`
 - Local dev: `http://localhost:3000/api/etsy/oauth/callback`
 
 ### Flow
@@ -427,7 +427,7 @@ New "Etsy connection" section above the existing Caps section:
 **Connected state:**
 ```
 ┌─ Etsy connection ─────────────────────────────────────┐
-│ Connected as DagsThreads (shop_id 65981312)           │
+│ Connected as DagsThreads (shop_id <ETSY_SHOP_ID>)           │
 │ Token expires in 47 min (auto-refreshed)              │
 │ [Disconnect]                                          │
 └───────────────────────────────────────────────────────┘
@@ -584,7 +584,7 @@ Tunables in code (constants, not env-driven):
 - Retry counts and backoff intervals
 
 Etsy app config (one-time, in Etsy developer dashboard):
-- Add production redirect URI: `https://tshirt-generator-one.vercel.app/api/etsy/oauth/callback`
+- Add production redirect URI: `https://<your-prod-domain>/api/etsy/oauth/callback`
 - Add local-dev redirect URI: `http://localhost:3000/api/etsy/oauth/callback`
 
 ## 15. Success Criteria

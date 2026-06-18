@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('@/lib/printify/client', () => ({
   printifyFetch: vi.fn(),
-  getShopId: vi.fn(() => '27519707'),
-  shopPath: vi.fn((s: string) => `/shops/27519707${s}`),
+  getShopId: vi.fn(() => '12345678'),
+  shopPath: vi.fn((s: string) => `/shops/12345678${s}`),
 }));
 
 import { printifyFetch } from '@/lib/printify/client';
@@ -11,7 +11,7 @@ import { createProductFromMaster } from '@/lib/printify/create-product';
 import type { MasterProductSpec } from '@/lib/printify/master-product';
 
 beforeEach(() => {
-  vi.stubEnv('PRINTIFY_SHOP_ID', '27519707');
+  vi.stubEnv('PRINTIFY_SHOP_ID', '12345678');
 });
 
 const sampleMaster: MasterProductSpec = {
@@ -57,7 +57,7 @@ describe('createProductFromMaster', () => {
     expect(r.productId).toBe('prod_new');
 
     const [path, opts] = vi.mocked(printifyFetch).mock.calls[0];
-    expect(path).toBe('/shops/27519707/products.json');
+    expect(path).toBe('/shops/12345678/products.json');
     const body = (opts as { body: Record<string, unknown> }).body;
     expect(body).toMatchObject({
       blueprint_id: 145,

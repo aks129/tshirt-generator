@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('@/lib/printify/client', () => ({
   printifyFetch: vi.fn(),
-  getShopId: vi.fn(() => '27519707'),
-  shopPath: vi.fn((s: string) => `/shops/27519707${s}`),
+  getShopId: vi.fn(() => '12345678'),
+  shopPath: vi.fn((s: string) => `/shops/12345678${s}`),
 }));
 
 import { printifyFetch } from '@/lib/printify/client';
@@ -11,7 +11,7 @@ import { publishProduct } from '@/lib/printify/publish-product';
 import { getProduct } from '@/lib/printify/get-product';
 
 beforeEach(() => {
-  vi.stubEnv('PRINTIFY_SHOP_ID', '27519707');
+  vi.stubEnv('PRINTIFY_SHOP_ID', '12345678');
 });
 
 describe('publishProduct', () => {
@@ -19,7 +19,7 @@ describe('publishProduct', () => {
     vi.mocked(printifyFetch).mockResolvedValueOnce({});
     await publishProduct('prod_xyz');
     const [path, opts] = vi.mocked(printifyFetch).mock.calls[0];
-    expect(path).toBe('/shops/27519707/products/prod_xyz/publish.json');
+    expect(path).toBe('/shops/12345678/products/prod_xyz/publish.json');
     expect((opts as { body: Record<string, unknown> }).body).toEqual({
       title: true, description: true, images: true, variants: true, tags: true,
     });

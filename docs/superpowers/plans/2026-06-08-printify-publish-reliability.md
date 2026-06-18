@@ -74,15 +74,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('@/lib/printify/client', () => ({
   printifyFetch: vi.fn(),
-  getShopId: vi.fn(() => '27519707'),
-  shopPath: vi.fn((s: string) => `/shops/27519707${s}`),
+  getShopId: vi.fn(() => '<PRINTIFY_SHOP_ID>'),
+  shopPath: vi.fn((s: string) => `/shops/<PRINTIFY_SHOP_ID>${s}`),
 }));
 
 import { printifyFetch } from '@/lib/printify/client';
 import { fetchMasterProduct } from '@/lib/printify/master-product';
 
 beforeEach(() => {
-  vi.stubEnv('PRINTIFY_SHOP_ID', '27519707');
+  vi.stubEnv('PRINTIFY_SHOP_ID', '<PRINTIFY_SHOP_ID>');
 });
 
 const baseResp = {
@@ -326,15 +326,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('@/lib/printify/client', () => ({
   printifyFetch: vi.fn(),
-  getShopId: vi.fn(() => '27519707'),
-  shopPath: vi.fn((s: string) => `/shops/27519707${s}`),
+  getShopId: vi.fn(() => '<PRINTIFY_SHOP_ID>'),
+  shopPath: vi.fn((s: string) => `/shops/<PRINTIFY_SHOP_ID>${s}`),
 }));
 
 import { printifyFetch } from '@/lib/printify/client';
 import { getProduct } from '@/lib/printify/get-product';
 
 beforeEach(() => {
-  vi.stubEnv('PRINTIFY_SHOP_ID', '27519707');
+  vi.stubEnv('PRINTIFY_SHOP_ID', '<PRINTIFY_SHOP_ID>');
 });
 
 describe('getProduct', () => {
@@ -825,7 +825,7 @@ export async function printifyFetch<T>(
     method: opts.method ?? 'GET',
     headers: {
       Authorization: `Bearer ${key}`,
-      'User-Agent': 'tshirt-generator/0.1 (eugene.vestel@gmail.com)',
+      'User-Agent': 'tshirt-generator/0.1 (you@example.com)',
       'content-type': 'application/json;charset=utf-8',
     },
   };

@@ -1,36 +1,55 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# DagsThreads Studio
 
-## Getting Started
+Turn slogans into print-ready t-shirt designs and publish them to Etsy as fully-configured Printify products — colors, sizes, per-variant pricing, mockups, and best-practice listing copy — end to end.
 
-First, run the development server:
+It's a single-operator web app: paste or AI-generate a batch of slogans, review the rendered designs, and publish the approved ones. Each publish clones a **master Printify product** (your one source of truth for blueprint/colors/sizes/prices) with the new artwork swapped in, then lets Printify push the listing to Etsy.
+
+## How it works
+
+Two generation paths feed one review → publish pipeline:
+
+- **Paste list** — type slogans, pick font/size/color, and the browser renders print-ready 3000×3600 transparent PNGs via the Canvas API. No AI.
+- **Generate with AI** — submit a brief; a durable Vercel Workflow expands it into concepts and generates each design server-side (typography rasterized with resvg, or illustration via Recraft V3).
+
+Then: **review** (approve / reject / regenerate) → **publish** (Gemini drafts the Etsy title/tags/description, a competitive-pricing recommendation runs in parallel) → the server **clones the master Printify product** and publishes → a **photo top-up** uploads extra mockups to Etsy via the seller's OAuth token → a **daily cron** reconciles slow or failed publishes.
+
+## Tech stack
+
+Next.js 16 (App Router, React 19, Turbopack) · TypeScript · Drizzle ORM + Postgres · Vercel Blob · Vercel Workflow · Gemini (+ Groq fallback) · Recraft V3 · Printify & Etsy APIs · Vitest.
+
+## Getting started
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm install
+cp .env.example .env.local      # then fill in the values
+pnpm db:migrate                  # apply schema to your DATABASE_URL
+pnpm dev                         # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Log in with the `APP_PASSWORD` you set. See [`.env.example`](.env.example) for every required variable; at minimum you need `DATABASE_URL`, `APP_PASSWORD`, `AUTH_COOKIE_SECRET`, `GEMINI_API_KEY`, and `BLOB_READ_WRITE_TOKEN` to run locally, plus `PRINTIFY_API_KEY` / `PRINTIFY_SHOP_ID` to publish.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Setting up the master product
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Publishing is driven entirely by one **master Printify product**. Create a plain product in your Printify dashboard (blueprint, colors, sizes, prices, mockups), publish it to Etsy once manually so its category/shipping config is proven valid, then select it in the app's `/settings`. Every published listing is a clone of this product with the design swapped in.
 
-## Learn More
+> Use a **plain** product, not a Printify Studio personalization product — clones of a personalization master fail to publish to Etsy.
 
-To learn more about Next.js, take a look at the following resources:
+## Commands
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+pnpm dev            # local dev server
+pnpm build          # production build (runs the TypeScript check)
+pnpm test           # run the test suite (Vitest)
+pnpm test path/to/file.test.ts        # a single test file
+pnpm lint           # eslint
+pnpm db:generate    # generate a migration after editing lib/db/schema.ts
+pnpm db:migrate     # apply pending migrations
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Architecture
 
-## Deploy on Vercel
+A deeper map of the codebase — the generation paths, the master-product publish contract, publish-reliability handling, and conventions — lives in [`CLAUDE.md`](CLAUDE.md).
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## License
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+[MIT](LICENSE).

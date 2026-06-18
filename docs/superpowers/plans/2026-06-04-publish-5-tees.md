@@ -28,7 +28,7 @@
 
 - [ ] **Step 1: Confirm preconditions**
 
-Verify in `/settings` (live site, password `tshirts`): master product selected, Etsy connected, **daily publish cap ≥ 5**.
+Verify in `/settings` (live site, password `<APP_PASSWORD>`): master product selected, Etsy connected, **daily publish cap ≥ 5**.
 
 - [ ] **Step 2: Create one design via the canvas path**
 
@@ -698,7 +698,7 @@ git commit -m "ui: Publish all batch action on the review grid"
 - [ ] **Step 1: Deploy**
 
 Run: `vercel --prod --yes`
-Expected: deployment READY, aliased to `tshirt-generator-one.vercel.app`.
+Expected: deployment READY, aliased to `<your-prod-domain>`.
 
 - [ ] **Step 2: Create the remaining 4 designs**
 

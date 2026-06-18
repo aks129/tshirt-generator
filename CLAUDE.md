@@ -21,12 +21,14 @@ pnpm db:generate       # drizzle-kit generate (after editing lib/db/schema.ts)
 pnpm db:migrate        # apply pending migrations to DATABASE_URL
 pnpm db:seed           # one-off seed (lib/db/seed.ts)
 
-vercel --prod --yes    # production deploy (auto-aliased to tshirt-generator-one.vercel.app)
+vercel --prod --yes    # production deploy (auto-aliased to the project's prod domain)
 ```
 
 The Vercel CLI is the deploy path; there's no GitHub Actions CD. `vercel env add NAME production` to add prod env vars; `vercel env pull .env.local` to sync down.
 
-PRs **do** run CI: a `security-baseline` reusable workflow (CodeQL) plus the default `Analyze (javascript-typescript)` scan. Known false positive — a React `<img src={value}>` flagged `js/xss-through-dom` ("DOM text reinterpreted as HTML"): React assigns `src` via the DOM property, not HTML parsing, so a string there can't be reinterpreted as markup. Dismiss as *false positive* in the Security UI rather than chasing a CodeQL-recognized sanitizer (a scheme allowlist won't clear it). The default CodeQL check is the authoritative one.
+PRs **do** run CI: a `security-baseline` reusable workflow (CodeQL) plus the default `Analyze (javascript-typescript)` scan. Known false positive — a React `<img src={value}>` flagged `js/xss-through-dom` ("DOM text reinterpreted as HTML"): React assigns `src` via the DOM property, not HTML parsing, so a string there can't be reinterpreted as markup. Dismiss as *false positive* in the Security UI rather than chasing a CodeQL-recognized sanitizer (a scheme allowlist won't clear it). The default CodeQL check is the authoritative one. While those FP alerts stand undismissed, merges to `main` sit in `BLOCKED` state and need `gh pr merge --admin`.
+
+`pnpm lint` has long-standing pre-existing errors (~47, incl. `react-hooks/purity` on `new Date(Date.now())` in server components). Lint your changed files individually (`npx eslint <file>`) and don't add new problems; fixing the backlog is not implied by any task.
 
 ## Business goal & flow
 
@@ -54,6 +56,8 @@ The publish modal has an **optional manual price override** (off by default): wh
 
 `createProductFromMaster` filters out placeholders the master defined but never put an image on (e.g. blueprint exposes back/sleeve/neck print areas but the operator only placed art on the front). Printify 400s with `images field is required` if you send empty `images: []`. Keep that filter.
 
+A master designed in Printify's editor can have **multiple image layers per placeholder** (the CC1717 master has 6). Swapping each layer's image id would stamp the new design once per layer, so `createProductFromMaster` collapses multi-layer placeholders to a single centered full-area placement (`x:0.5, y:0.5, scale:1`); single-layer masters keep the operator-approved placement exactly. Keep that branch too.
+
 To change product config (colors, sizes, pricing, mockups): edit the master product in the Printify dashboard, then in `/settings` re-pick it (or just save — same product id) to refresh.
 
 ## Publish reliability (Printify → Etsy)
@@ -64,6 +68,7 @@ Printify's managed Etsy publish can fail **silently**: `POST .../publish.json` r
 - `createProductFromMaster` forwards the master's `sales_channel_properties` (Etsy shipping/category config) onto clones, **guarded** — only when present, so it's a byte-identical no-op for masters without it. If Printify ever 400s on create with an SCP error, the publish fails *loudly* (visible `failed` row), never silently.
 - **No silent `publishing_slow` forever.** `getProduct` exposes `isLocked`; the pure helper `lib/publish/classify-stuck-publish.ts` maps `(isLocked, hasExternal, ageMs, cutoffMs) → 'live' | 'failed' | 'wait'`; the reconcile cron flips an **unlocked + no-`external` + aged** listing to `failed` with a human-readable reason. A still-locked product returns `'wait'` (Printify is still processing) — that lock check is the safety valve against false-positive failures.
 - **429 + `Retry-After` backoff** in `printifyFetch` (`lib/printify/client.ts`) and `uploadEtsyListingImage` (`lib/mockups/upload-to-etsy.ts`): max 3 retries, honor `Retry-After` capped at 10s, exponential 1s/2s/4s fallback. Printify caps publishing at 200/30min; Etsy enforces QPS+QPD.
+- **Observed timing:** a single publish attaches its Etsy listing in ~6 min; a batch of 4+ queues on Printify's side and takes ~25–35 min. `publishing_slow` during that window is normal — only unlocked+no-`external` is a failure.
 
 ## Architecture map
 
@@ -132,6 +137,16 @@ docs/superpowers/    Implementation plans + specs (Foundation, Publishing,
                      Competitive Pricing, Mockup Photos, Publish Reliability, …).
 ```
 
+## UI design system ("Print Shop")
+
+The app is branded **DagsThreads Studio** with a warm print-shop identity. When touching UI, stay inside this system instead of reintroducing zinc/black utilitarian styles:
+
+- **Tokens** live in `app/globals.css` `:root` (oklch): cream paper `--background` with a dot-grain texture on `body`, ink `--foreground`, persimmon `--primary`, warm sand `--secondary`/`--muted`. Use semantic classes (`bg-card`, `text-muted-foreground`, `bg-primary`) — never hardcoded `zinc-*`/`black` for chrome.
+- **Type:** Bricolage Grotesque via `--font-display` (`font-display` utility; `h1`/`h2` get it automatically). Body is Geist.
+- **Status badges:** always `@/components/status-badge` (`<StatusBadge status={...} />`) — garment-tag style, pulsing dot for in-flight states, covers design/batch/listing statuses. Don't write ad-hoc badge spans.
+- **Motion utilities** (globals.css): `anim-rise` + `anim-rise-1..4` for staggered page-load reveals, `press` for button press feedback, `card-lift` for hover, `pulse-dot` for in-progress dots. Buttons are pill-shaped (`rounded-full`).
+- The bulk-generator's inner workbench (`bulk-generator.tsx`) intentionally keeps denser utilitarian controls — the page chrome carries the identity.
+
 ## Vercel Workflow generation
 
 AI batch generation runs as a **durable Vercel Workflow** (`workflow` package, the WDK). `POST /api/batches` calls `start(generateBatch, [batchId])` from `workflow/api`; the `batches.workflowRunId` column tracks the run.
@@ -155,7 +170,7 @@ Workflow:
 
 ## Auth
 
-`middleware.ts` cookie-gates everything except `PUBLIC_PATHS`. Env vars: `APP_PASSWORD` (single shared password, `tshirts` in dev), `AUTH_COOKIE_SECRET` (jose signing, ≥32 chars). For curl testing: `POST /api/auth/login` with `{"password":"..."}` → use `-c/-b` cookie jar.
+`middleware.ts` cookie-gates everything except `PUBLIC_PATHS`. Env vars: `APP_PASSWORD` (single shared login password, set per environment), `AUTH_COOKIE_SECRET` (jose signing, ≥32 chars). For curl testing: `POST /api/auth/login` with `{"password":"..."}` → use `-c/-b` cookie jar.
 
 ## AI providers
 

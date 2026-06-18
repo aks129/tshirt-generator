@@ -18,7 +18,7 @@
 
 **Operator action required (one-time, after Task 4):**
 - Add to Etsy app config in https://www.etsy.com/developers/your-apps:
-  - Production redirect URI: `https://tshirt-generator-one.vercel.app/api/etsy/oauth/callback`
+  - Production redirect URI: `https://<your-prod-domain>/api/etsy/oauth/callback`
   - Local-dev redirect URI: `http://localhost:3000/api/etsy/oauth/callback`
 
 ---
@@ -1216,8 +1216,8 @@ describe('uploadEtsyListingImage', () => {
 
     const r = await uploadEtsyListingImage({
       accessToken: 'abc.token',
-      shopId: 65981312,
-      listingId: '4504330542',
+      shopId: <ETSY_SHOP_ID>,
+      listingId: '<ETSY_LISTING_ID>',
       imageBuffer: Buffer.from('JPEGBYTES'),
       filename: 'design_1.jpg',
       rank: 2,
@@ -1228,7 +1228,7 @@ describe('uploadEtsyListingImage', () => {
     expect(r.url).toBe('https://i.etsy/full');
 
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(String(url)).toBe('https://openapi.etsy.com/v3/application/shops/65981312/listings/4504330542/images');
+    expect(String(url)).toBe('https://openapi.etsy.com/v3/application/shops/<ETSY_SHOP_ID>/listings/<ETSY_LISTING_ID>/images');
     const headers = (init as RequestInit).headers as Record<string, string>;
     expect(headers.Authorization).toBe('Bearer abc.token');
     expect(headers['x-api-key']).toBe('kkk:sss');
@@ -2063,7 +2063,7 @@ vercel --prod --yes 2>&1 | tail -5
 In https://www.etsy.com/developers/your-apps:
 - Edit your app
 - Add to "Callback URLs":
-  - `https://tshirt-generator-one.vercel.app/api/etsy/oauth/callback`
+  - `https://<your-prod-domain>/api/etsy/oauth/callback`
   - `http://localhost:3000/api/etsy/oauth/callback`
 - Save
 
@@ -2071,7 +2071,7 @@ Confirm the app's `Scopes` include `listings_w`. (Some Etsy apps need scope re-a
 
 - [ ] **Step 4: Connect Etsy via the app UI**
 
-1. Open https://tshirt-generator-one.vercel.app/settings
+1. Open https://<your-prod-domain>/settings
 2. Click "Connect Etsy shop"
 3. Authorize on Etsy
 4. Should redirect back to /settings showing "Connected as DagsThreads"
@@ -2092,16 +2092,16 @@ Expected: non-null user_id and shop_id_oauth, expiry ~1h in future.
 - [ ] **Step 5: Test on existing live listing — "I Came I Saw" backfill**
 
 ```bash
-curl -s -c /tmp/c.txt -X POST https://tshirt-generator-one.vercel.app/api/auth/login \
+curl -s -c /tmp/c.txt -X POST https://<your-prod-domain>/api/auth/login \
   -H "content-type: application/json" -d '{"password":"teeshirts"}' >/dev/null
 curl -s -b /tmp/c.txt -X POST \
-  https://tshirt-generator-one.vercel.app/api/listings/eea6e512-02ad-4b2d-9453-193c0deb8036/photos \
+  https://<your-prod-domain>/api/listings/eea6e512-02ad-4b2d-9453-193c0deb8036/photos \
   --max-time 60 | python3 -m json.tool
 ```
 
 Expected: `{ok: true, uploadedCount: 6}`. ~15-20s response.
 
-Then open the Etsy listing in browser (https://etsy.com/listing/4504330542). Photo grid should now show 7 photos (1 original + 6 ours).
+Then open the Etsy listing in browser (https://etsy.com/listing/<ETSY_LISTING_ID>). Photo grid should now show 7 photos (1 original + 6 ours).
 
 - [ ] **Step 6: Test full flow — generate, publish, photo upload**
 

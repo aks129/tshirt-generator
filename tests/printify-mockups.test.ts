@@ -3,7 +3,7 @@ import { fetchPrintifyMockups } from '@/lib/mockups/printify-mockups';
 
 beforeEach(() => {
   vi.stubEnv('PRINTIFY_API_KEY', 'test-key');
-  vi.stubEnv('PRINTIFY_SHOP_ID', '27519707');
+  vi.stubEnv('PRINTIFY_SHOP_ID', '12345678');
 });
 
 function mockProduct(images: Array<{ src: string; position?: string; is_default?: boolean; is_selected_for_publishing?: boolean }>) {

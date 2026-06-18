@@ -8,7 +8,7 @@ import { printifyFetch } from '@/lib/printify/client';
 import { uploadImageByUrl } from '@/lib/printify/upload-image';
 
 beforeEach(() => {
-  vi.stubEnv('PRINTIFY_SHOP_ID', '27519707');
+  vi.stubEnv('PRINTIFY_SHOP_ID', '12345678');
 });
 
 describe('uploadImageByUrl', () => {

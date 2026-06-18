@@ -2,15 +2,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('@/lib/printify/client', () => ({
   printifyFetch: vi.fn(),
-  getShopId: vi.fn(() => '27519707'),
-  shopPath: vi.fn((s: string) => `/shops/27519707${s}`),
+  getShopId: vi.fn(() => '12345678'),
+  shopPath: vi.fn((s: string) => `/shops/12345678${s}`),
 }));
 
 import { printifyFetch } from '@/lib/printify/client';
 import { fetchMasterProduct } from '@/lib/printify/master-product';
 
 beforeEach(() => {
-  vi.stubEnv('PRINTIFY_SHOP_ID', '27519707');
+  vi.stubEnv('PRINTIFY_SHOP_ID', '12345678');
 });
 
 const baseResp = {

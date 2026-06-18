@@ -3,7 +3,7 @@
 **Date:** 2026-05-12
 **Status:** Approved, ready for implementation planning
 **Owner:** Eugene Vestel
-**Builds on:** Plan 1 (foundation + bulk typography generator), live at `https://tshirt-generator-one.vercel.app`
+**Builds on:** Plan 1 (foundation + bulk typography generator), live at `https://<your-prod-domain>`
 
 ## 1. Purpose & Goals
 
