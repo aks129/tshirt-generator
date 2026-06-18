@@ -32,8 +32,16 @@ export async function POST(req: Request) {
 
   if (r.capReached) return NextResponse.json({ ok: false, error: r.error }, { status: 429 });
   if (!r.ok) {
-    const status = r.error?.startsWith('Content blocked') ? 422 : 502;
-    return NextResponse.json({ ok: false, error: r.error, listingId: r.listingId }, { status });
+    // Preserve the route's original per-failure status codes.
+    const STATUS: Record<string, number> = {
+      settings: 500, kill_switch: 503, no_master: 400, no_design: 404,
+      no_image: 400, dedup: 409, safety: 422, publish_error: 502,
+    };
+    const status = STATUS[r.errorKind ?? 'publish_error'] ?? 502;
+    return NextResponse.json(
+      { ok: false, error: r.error, listingId: r.listingId, flags: r.flags },
+      { status },
+    );
   }
   return NextResponse.json(
     { ok: true, listingId: r.listingId, status: r.status, etsyListingId: r.etsyListingId, etsyUrl: r.etsyUrl },

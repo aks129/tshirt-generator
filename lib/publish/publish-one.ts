@@ -11,6 +11,10 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 export type PublishOneCopy = { title: string; description: string; tags: string[] };
 
+export type PublishOneErrorKind =
+  | 'settings' | 'kill_switch' | 'no_master' | 'no_design' | 'no_image'
+  | 'dedup' | 'safety' | 'publish_error';
+
 export type PublishOneResult = {
   ok: boolean;
   status?: 'live' | 'publishing_slow';
@@ -19,6 +23,8 @@ export type PublishOneResult = {
   etsyUrl?: string;
   capReached?: boolean;
   error?: string;
+  errorKind?: PublishOneErrorKind;
+  flags?: string[];
 };
 
 export async function publishOneDesign(
@@ -27,9 +33,9 @@ export async function publishOneDesign(
   opts: { overrideSafety?: boolean; priceCents?: number; resume?: boolean } = {},
 ): Promise<PublishOneResult> {
   const s = await db.query.settings.findFirst();
-  if (!s) return { ok: false, error: 'Settings missing' };
-  if (s.killSwitchActive) return { ok: false, error: 'Kill switch active' };
-  if (!s.masterPrintifyProductId) return { ok: false, error: 'No master Printify product selected.' };
+  if (!s) return { ok: false, error: 'Settings missing', errorKind: 'settings' };
+  if (s.killSwitchActive) return { ok: false, error: 'Kill switch active', errorKind: 'kill_switch' };
+  if (!s.masterPrintifyProductId) return { ok: false, error: 'No master Printify product selected.', errorKind: 'no_master' };
 
   const since = new Date(Date.now() - DAY_MS);
   const [{ count }] = await db
@@ -41,8 +47,8 @@ export async function publishOneDesign(
   }
 
   const design = await db.query.designs.findFirst({ where: eq(designs.id, designId) });
-  if (!design) return { ok: false, error: 'Design not found' };
-  if (!design.imageBlobUrl) return { ok: false, error: 'Design has no image' };
+  if (!design) return { ok: false, error: 'Design not found', errorKind: 'no_design' };
+  if (!design.imageBlobUrl) return { ok: false, error: 'Design has no image', errorKind: 'no_image' };
 
   const existing = await db.query.listings.findFirst({
     where: and(eq(listings.designId, designId), sql`status in ('publishing','publishing_slow','live')`),
@@ -50,7 +56,7 @@ export async function publishOneDesign(
   let listingId: string;
   let preCreatedProductId: string | undefined;
   if (existing) {
-    if (!opts.resume) return { ok: false, error: 'Design already published or publishing' };
+    if (!opts.resume) return { ok: false, error: 'Design already published or publishing', errorKind: 'dedup' };
     listingId = existing.id;
     preCreatedProductId = existing.printifyProductId ?? undefined;
   } else {
@@ -62,7 +68,9 @@ export async function publishOneDesign(
         description: copy.description,
         tags: copy.tags,
       });
-      if (safety.flags.length > 0) return { ok: false, error: `Content blocked: ${safety.flags.join(', ')}` };
+      if (safety.flags.length > 0) {
+        return { ok: false, error: 'Content blocked', errorKind: 'safety', flags: safety.flags };
+      }
     }
     const [row] = await db.insert(listings).values({
       designId, title: copy.title, description: copy.description, tags: copy.tags,
@@ -125,6 +133,6 @@ export async function publishOneDesign(
     await db.update(listings).set({ status: 'failed', failureReason: reason.slice(0, 500) }).where(eq(listings.id, listingId));
     await db.update(designs).set({ status: 'failed' }).where(eq(designs.id, designId));
     await logEvent({ type: 'publish_failed', designId, batchId: design.batchId, payload: { reason: reason.slice(0, 500) } });
-    return { ok: false, error: reason, listingId };
+    return { ok: false, error: reason, listingId, errorKind: 'publish_error' };
   }
 }
