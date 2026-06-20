@@ -1,0 +1,41 @@
+name: publish-batch
+
+# Durable batch publisher — the free-tier alternative to the Vercel Workflow
+# DevKit (Hobby plans don't execute WDK workflows). Runs on the GitHub Actions
+# runner (up to 6h, not bound to a browser tab or Vercel's 60s limit) and drives
+# the existing publish endpoints one design at a time, paced and idempotent.
+#
+# Trigger manually: Actions tab → publish-batch → Run workflow → enter the batch id.
+#
+# Required repo secrets (Settings → Secrets and variables → Actions):
+#   APP_URL       e.g. https://your-app.vercel.app   (no trailing slash)
+#   APP_PASSWORD  the app login password
+
+on:
+  workflow_dispatch:
+    inputs:
+      batch_id:
+        description: 'Batch id whose approved designs to publish'
+        required: true
+        type: string
+      pace_ms:
+        description: 'Gap between designs (ms) — paces Printify queue'
+        required: false
+        default: '5000'
+        type: string
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Publish batch
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          APP_PASSWORD: ${{ secrets.APP_PASSWORD }}
+          BATCH_ID: ${{ inputs.batch_id }}
+          PACE_MS: ${{ inputs.pace_ms }}
+        run: node scripts/publish-batch.mjs

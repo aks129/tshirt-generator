@@ -31,8 +31,13 @@ async function withRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
       const is429 = /429|RESOURCE_EXHAUSTED|quota|rate/i.test(msg);
       if (!is429 || i === attempts - 1) throw err;
       const retryMatch = msg.match(/retry in ([0-9.]+)s/i);
-      const waitMs = retryMatch ? Math.ceil(Number(retryMatch[1]) * 1000) + 500 : (i + 1) * 8000;
-      await sleep(Math.min(waitMs, 60_000));
+      const waitMs = retryMatch ? Math.ceil(Number(retryMatch[1]) * 1000) + 500 : (i + 1) * 4000;
+      // Cap the backoff well under Vercel's 60s function budget — a long
+      // free-tier 429 wait must not hang a request to the timeout. If the
+      // suggested wait exceeds the cap, give up (fall through to Groq / throw).
+      const waitCapped = Math.min(waitMs, 8_000);
+      if (waitMs > waitCapped && i < attempts - 1) throw err;
+      await sleep(waitCapped);
     }
   }
   throw lastErr;

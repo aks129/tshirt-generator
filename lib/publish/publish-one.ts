@@ -8,6 +8,33 @@ import { logEvent } from '@/lib/events';
 import type { Concept } from '@/lib/schemas';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const SAFETY_TIMEOUT_MS = 12_000;
+
+/** Run the live content-safety check, but bounded by a timeout and never
+ *  throwing. On timeout/error, fall back to the flags the design already
+ *  earned during generation (`designs.safetyFlags`). This keeps a hung or
+ *  rate-limited Gemini call from timing out the whole publish request. */
+async function safetyFlagsBounded(
+  design: { concept: unknown; safetyFlags: unknown },
+  copy: PublishOneCopy,
+): Promise<string[]> {
+  const stored = Array.isArray(design.safetyFlags) ? (design.safetyFlags as string[]) : [];
+  try {
+    const live = await Promise.race([
+      checkSafety({
+        headline: (design.concept as Concept).headline,
+        illustrationPrompt: 'n/a',
+        title: copy.title,
+        description: copy.description,
+        tags: copy.tags,
+      }),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('safety check timed out')), SAFETY_TIMEOUT_MS)),
+    ]);
+    return live.flags;
+  } catch {
+    return stored;
+  }
+}
 
 export type PublishOneCopy = { title: string; description: string; tags: string[] };
 
@@ -61,21 +88,30 @@ export async function publishOneDesign(
     preCreatedProductId = existing.printifyProductId ?? undefined;
   } else {
     if (!opts.overrideSafety) {
-      const safety = await checkSafety({
-        headline: (design.concept as Concept).headline,
-        illustrationPrompt: 'n/a',
-        title: copy.title,
-        description: copy.description,
-        tags: copy.tags,
-      });
-      if (safety.flags.length > 0) {
-        return { ok: false, error: 'Content blocked', errorKind: 'safety', flags: safety.flags };
+      // Bounded + non-fatal: a hanging/rate-limited Gemini safety call must not
+      // burn the whole function budget (free-tier 429 backoff was causing 504s).
+      // On timeout/error, fall back to the flags the design already earned at
+      // generation time rather than blocking all publishing.
+      const flags = await safetyFlagsBounded(design, copy);
+      if (flags.length > 0) {
+        return { ok: false, error: 'Content blocked', errorKind: 'safety', flags };
       }
     }
-    const [row] = await db.insert(listings).values({
-      designId, title: copy.title, description: copy.description, tags: copy.tags,
-      status: 'publishing', editedByUser: true,
-    }).returning();
+    // Upsert on the unique designId: a design may have a prior 'failed' (or
+    // rejected) listing row that the active-status dedup above doesn't match;
+    // re-publishing must reuse that row, not violate the unique constraint.
+    const [row] = await db
+      .insert(listings)
+      .values({ designId, title: copy.title, description: copy.description, tags: copy.tags, status: 'publishing', editedByUser: true })
+      .onConflictDoUpdate({
+        target: listings.designId,
+        set: {
+          title: copy.title, description: copy.description, tags: copy.tags,
+          status: 'publishing', failureReason: null, etsyListingId: null,
+          printifyProductId: null, publishedAt: null, editedByUser: true,
+        },
+      })
+      .returning();
     listingId = row.id;
   }
 

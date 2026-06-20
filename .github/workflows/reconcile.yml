@@ -1,0 +1,33 @@
+name: reconcile
+
+# Vercel Hobby caps cron jobs (and the Workflow DevKit needs beta/paid infra),
+# so the daily reconcile pass is driven from GitHub Actions instead. It hits the
+# same /api/cron/reconcile endpoint (bearer-authed with CRON_SECRET) that flips
+# stuck publishes to live/failed and backfills photos.
+#
+# Required repo secrets (Settings → Secrets and variables → Actions):
+#   APP_URL      e.g. https://your-app.vercel.app   (no trailing slash)
+#   CRON_SECRET  same value as the app's CRON_SECRET env var
+
+on:
+  schedule:
+    - cron: '0 6 * * *' # daily 06:00 UTC
+  workflow_dispatch: {} # allow manual runs from the Actions tab
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hit reconcile endpoint
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$APP_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "::error::APP_URL and CRON_SECRET repo secrets must be set"; exit 1
+          fi
+          code=$(curl -sS -o /tmp/out.json -w "%{http_code}" --max-time 300 \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$APP_URL/api/cron/reconcile")
+          echo "HTTP $code"; cat /tmp/out.json; echo
+          [ "$code" = "200" ] || { echo "::error::reconcile failed ($code)"; exit 1; }

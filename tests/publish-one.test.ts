@@ -9,7 +9,12 @@ vi.mock('@/lib/db/client', () => {
         designs: { findFirst: vi.fn() },
         listings: { findFirst: vi.fn() },
       },
-      insert: vi.fn(() => ({ values: vi.fn(() => ({ returning: vi.fn(async () => [listingsRow]) })) })),
+      insert: vi.fn(() => ({
+        values: vi.fn(() => ({
+          returning: vi.fn(async () => [listingsRow]),
+          onConflictDoUpdate: vi.fn(() => ({ returning: vi.fn(async () => [listingsRow]) })),
+        })),
+      })),
       update: vi.fn(() => ({ set: vi.fn(() => ({ where: vi.fn(async () => undefined) })) })),
       select: vi.fn(() => ({ from: vi.fn(() => ({ where: vi.fn(async () => [{ count: 0 }]) })) })),
     },
@@ -33,7 +38,12 @@ beforeEach(() => {
   vi.mocked(db.query.designs.findFirst).mockResolvedValue(DESIGN as never);
   vi.mocked(db.query.listings.findFirst).mockResolvedValue(undefined as never);
   vi.mocked(db.select).mockReturnValue({ from: () => ({ where: async () => [{ count: 0 }] }) } as never);
-  vi.mocked(db.insert).mockReturnValue({ values: vi.fn(() => ({ returning: vi.fn(async () => [{ id: 'listing_1' }]) })) } as never);
+  vi.mocked(db.insert).mockReturnValue({
+    values: vi.fn(() => ({
+      returning: vi.fn(async () => [{ id: 'listing_1' }]),
+      onConflictDoUpdate: vi.fn(() => ({ returning: vi.fn(async () => [{ id: 'listing_1' }]) })),
+    })),
+  } as never);
   vi.mocked(db.update).mockReturnValue({ set: vi.fn(() => ({ where: vi.fn(async () => undefined) })) } as never);
 });
 

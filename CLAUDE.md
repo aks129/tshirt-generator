@@ -26,6 +26,13 @@ vercel --prod --yes    # production deploy (auto-aliased to the project's prod d
 
 The Vercel CLI is the deploy path; there's no GitHub Actions CD. `vercel env add NAME production` to add prod env vars; `vercel env pull .env.local` to sync down.
 
+**Scheduled/background work runs on GitHub Actions, not Vercel.** The Vercel Hobby plan caps cron jobs and doesn't execute Workflow DevKit runs, so:
+
+- `.github/workflows/reconcile.yml` — daily (`0 6 * * *`) GitHub-Actions cron that curls `/api/cron/reconcile` (bearer `CRON_SECRET`). This is the reliable trigger; the `vercel.json` cron is a no-op fallback.
+- `.github/workflows/publish-batch.yml` + `scripts/publish-batch.mjs` — manual `workflow_dispatch` durable batch publisher (free-tier replacement for the `publishBatch` WDK workflow, which doesn't run on Hobby). Drives the publish endpoints one design at a time, paced, idempotent.
+- Required GitHub repo secrets: `APP_URL`, `CRON_SECRET`, `APP_PASSWORD`.
+- Caveat: the in-app "Publish all" button triggers the `publishBatch` WDK workflow, which only executes on a Vercel plan that runs Workflows; on Hobby use the GitHub Actions `publish-batch` dispatch instead (or the per-design modal, which publishes synchronously).
+
 PRs **do** run CI: a `security-baseline` reusable workflow (CodeQL) plus the default `Analyze (javascript-typescript)` scan. Known false positive — a React `<img src={value}>` flagged `js/xss-through-dom` ("DOM text reinterpreted as HTML"): React assigns `src` via the DOM property, not HTML parsing, so a string there can't be reinterpreted as markup. Dismiss as *false positive* in the Security UI rather than chasing a CodeQL-recognized sanitizer (a scheme allowlist won't clear it). The default CodeQL check is the authoritative one. While those FP alerts stand undismissed, merges to `main` sit in `BLOCKED` state and need `gh pr merge --admin`.
 
 `pnpm lint` has long-standing pre-existing errors (~47, incl. `react-hooks/purity` on `new Date(Date.now())` in server components). Lint your changed files individually (`npx eslint <file>`) and don't add new problems; fixing the backlog is not implied by any task.
