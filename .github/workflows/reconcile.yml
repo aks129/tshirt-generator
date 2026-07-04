@@ -31,3 +31,13 @@ jobs:
             "$APP_URL/api/cron/reconcile")
           echo "HTTP $code"; cat /tmp/out.json; echo
           [ "$code" = "200" ] || { echo "::error::reconcile failed ($code)"; exit 1; }
+      - name: Capture listing stats (sales-feedback loop)
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          code=$(curl -sS -o /tmp/stats.json -w "%{http_code}" --max-time 300 \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$APP_URL/api/cron/stats")
+          echo "HTTP $code"; cat /tmp/stats.json; echo
+          [ "$code" = "200" ] || { echo "::error::stats capture failed ($code)"; exit 1; }

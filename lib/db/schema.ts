@@ -65,6 +65,19 @@ export const listings = pgTable('listings', {
   photosFailureReason: text('photos_failure_reason'),
 });
 
+// Daily performance snapshots per live listing (views/favorites from Etsy's
+// public getListing). Append-only; deltas are computed at read time. Feeds
+// the dashboard "What's selling" ranking.
+export const listingStats = pgTable('listing_stats', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  listingId: uuid('listing_id').references(() => listings.id).notNull(),
+  etsyListingId: text('etsy_listing_id').notNull(),
+  views: integer('views').notNull().default(0),
+  favorers: integer('favorers').notNull().default(0),
+  state: text('state').notNull().default('active'),
+  capturedAt: timestamp('captured_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
 export const nicheLibrary = pgTable('niche_library', {
   id: uuid('id').primaryKey().defaultRandom(),
   slug: text('slug').notNull().unique(),
