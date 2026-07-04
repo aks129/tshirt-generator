@@ -47,19 +47,32 @@ export default async function Dashboard() {
       listingId: listingStats.listingId,
       views: listingStats.views,
       favorers: listingStats.favorers,
+      sales: listingStats.sales,
       capturedAt: listingStats.capturedAt,
       title: listings.title,
       etsyListingId: listings.etsyListingId,
+      concept: designs.concept,
     })
     .from(listingStats)
     .innerJoin(listings, eq(listingStats.listingId, listings.id))
+    .innerJoin(designs, eq(listings.designId, designs.id))
     .where(and(eq(listings.status, 'live'), gte(listingStats.capturedAt, since)));
 
-  const listingMeta = new Map(snapshots.map((r) => [r.listingId, { title: r.title, etsyListingId: r.etsyListingId }]));
+  const listingMeta = new Map(
+    snapshots.map((r) => [
+      r.listingId,
+      {
+        title: r.title,
+        etsyListingId: r.etsyListingId,
+        headline: (r.concept as { headline?: string } | null)?.headline ?? null,
+      },
+    ]),
+  );
   const topPerformers = rankListingPerformance(snapshots, { top: 5 }).map((p) => ({
     ...p,
     title: listingMeta.get(p.listingId)?.title ?? '(unknown)',
     etsyListingId: listingMeta.get(p.listingId)?.etsyListingId ?? null,
+    headline: listingMeta.get(p.listingId)?.headline ?? null,
   }));
 
   const s = await db.query.settings.findFirst();
@@ -128,6 +141,12 @@ export default async function Dashboard() {
                     ) : (
                       <span className="min-w-0 flex-1 truncate">{p.title}</span>
                     )}
+                    {p.sales !== null && (
+                      <span className="shrink-0 text-xs font-medium text-foreground">
+                        🛒 {p.sales}
+                        {(p.deltaSales ?? 0) > 0 && <span className="text-emerald-700"> +{p.deltaSales}</span>}
+                      </span>
+                    )}
                     <span className="shrink-0 text-xs text-muted-foreground">
                       👁 {p.views}
                       {p.deltaViews > 0 && <span className="text-emerald-700"> +{p.deltaViews}</span>}
@@ -136,6 +155,15 @@ export default async function Dashboard() {
                       ♥ {p.favorers}
                       {p.deltaFavorers > 0 && <span className="text-emerald-700"> +{p.deltaFavorers}</span>}
                     </span>
+                    {p.headline && (
+                      <Link
+                        href={`/batches/new?mode=ai&prompt=${encodeURIComponent(`More designs in the same niche as the proven seller "${p.headline}" — same audience and vibe, fresh new slogans (do not repeat the original).`)}`}
+                        className="press shrink-0 rounded-full bg-accent px-2.5 py-1 text-[11px] font-medium text-accent-foreground hover:opacity-90"
+                        title="Prefill the AI generator with this winner's niche"
+                      >
+                        ✨ More like this
+                      </Link>
+                    )}
                   </li>
                 ))}
               </ol>

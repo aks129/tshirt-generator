@@ -7,8 +7,16 @@ import { AIGenerator } from './ai-generator';
 
 type Mode = 'paste' | 'ai';
 
-export function GeneratorTabs({ niches }: { niches: Niche[] }) {
-  const [mode, setMode] = useState<Mode>('paste');
+export function GeneratorTabs({
+  niches,
+  initialMode,
+  initialPrompt,
+}: {
+  niches: Niche[];
+  initialMode?: Mode;
+  initialPrompt?: string;
+}) {
+  const [mode, setMode] = useState<Mode>(initialMode ?? 'paste');
 
   return (
     <div className="space-y-4">
@@ -39,7 +47,7 @@ export function GeneratorTabs({ niches }: { niches: Niche[] }) {
         </button>
       </div>
 
-      {mode === 'paste' ? <BulkGenerator /> : <AIGenerator niches={niches} />}
+      {mode === 'paste' ? <BulkGenerator /> : <AIGenerator niches={niches} initialPrompt={initialPrompt} />}
     </div>
   );
 }

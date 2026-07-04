@@ -3,6 +3,8 @@ import { and, eq, isNotNull } from 'drizzle-orm';
 import { db } from '@/lib/db/client';
 import { listings, listingStats } from '@/lib/db/schema';
 import { fetchEtsyListingStats } from '@/lib/etsy/listing-stats';
+import { fetchSalesByListing } from '@/lib/etsy/receipts';
+import { getEtsyAccessToken } from '@/lib/etsy/oauth-client';
 import { logEvent } from '@/lib/events';
 
 export const runtime = 'nodejs';
@@ -24,6 +26,20 @@ export async function GET(req: Request) {
     .from(listings)
     .where(and(eq(listings.status, 'live'), isNotNull(listings.etsyListingId)));
 
+  // Sales need seller OAuth with the transactions_r scope. Tokens granted
+  // before that scope was added will 403 — record sales as unknown (null)
+  // rather than failing the run; the operator reconnects Etsy to enable it.
+  let salesByListing: Map<string, number> | null = null;
+  try {
+    const s = await db.query.settings.findFirst();
+    if (s?.etsyShopIdOauth) {
+      const accessToken = await getEtsyAccessToken();
+      salesByListing = await fetchSalesByListing({ accessToken, shopId: Number(s.etsyShopIdOauth) });
+    }
+  } catch {
+    salesByListing = null;
+  }
+
   let captured = 0;
   let failed = 0;
 
@@ -36,6 +52,7 @@ export async function GET(req: Request) {
         etsyListingId: l.etsyListingId,
         views: stats.views,
         favorers: stats.favorers,
+        sales: salesByListing ? (salesByListing.get(l.etsyListingId) ?? 0) : null,
         state: stats.state,
       });
       captured++;
@@ -48,8 +65,8 @@ export async function GET(req: Request) {
 
   await logEvent({
     type: 'generated',
-    payload: { kind: 'stats_run', scanned: live.length, captured, failed },
+    payload: { kind: 'stats_run', scanned: live.length, captured, failed, salesTracked: salesByListing !== null },
   });
 
-  return NextResponse.json({ ok: true, scanned: live.length, captured, failed });
+  return NextResponse.json({ ok: true, scanned: live.length, captured, failed, salesTracked: salesByListing !== null });
 }
