@@ -1,11 +1,12 @@
 import Link from 'next/link';
 import { db } from '@/lib/db/client';
-import { batches, designs, listings } from '@/lib/db/schema';
-import { desc, sql, gte, eq, or } from 'drizzle-orm';
+import { batches, designs, listings, listingStats } from '@/lib/db/schema';
+import { desc, sql, gte, eq, or, and } from 'drizzle-orm';
 import { Card, CardContent } from '@/components/ui/card';
 import { RecentBatches } from './recent-batches';
 import { AiHealthCard } from './ai-health-card';
 import { StatusBadge } from '@/components/status-badge';
+import { rankListingPerformance } from '@/lib/insights/listing-rank';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -37,6 +38,29 @@ export default async function Dashboard() {
     .where(or(eq(listings.status, 'publishing'), eq(listings.status, 'publishing_slow')))
     .orderBy(desc(listings.createdAt))
     .limit(6);
+
+  // "What's selling" — 7d of stats snapshots for live listings, ranked by
+  // views gained (see lib/insights/listing-rank). Empty until the daily
+  // stats cron has captured at least one snapshot.
+  const snapshots = await db
+    .select({
+      listingId: listingStats.listingId,
+      views: listingStats.views,
+      favorers: listingStats.favorers,
+      capturedAt: listingStats.capturedAt,
+      title: listings.title,
+      etsyListingId: listings.etsyListingId,
+    })
+    .from(listingStats)
+    .innerJoin(listings, eq(listingStats.listingId, listings.id))
+    .where(and(eq(listings.status, 'live'), gte(listingStats.capturedAt, since)));
+
+  const listingMeta = new Map(snapshots.map((r) => [r.listingId, { title: r.title, etsyListingId: r.etsyListingId }]));
+  const topPerformers = rankListingPerformance(snapshots, { top: 5 }).map((p) => ({
+    ...p,
+    title: listingMeta.get(p.listingId)?.title ?? '(unknown)',
+    etsyListingId: listingMeta.get(p.listingId)?.etsyListingId ?? null,
+  }));
 
   const s = await db.query.settings.findFirst();
   const needsSetup = !s?.printifySetupAt;
@@ -82,6 +106,43 @@ export default async function Dashboard() {
       <section>
         <AiHealthCard />
       </section>
+
+      {topPerformers.length > 0 && (
+        <section>
+          <h2 className="mb-3 font-display text-lg font-semibold">What&rsquo;s selling · 7d</h2>
+          <Card className="card-lift overflow-hidden py-0">
+            <CardContent className="p-0">
+              <ol className="divide-y">
+                {topPerformers.map((p, i) => (
+                  <li key={p.listingId} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+                    <span className="w-5 shrink-0 text-center font-display font-bold text-primary">{i + 1}</span>
+                    {p.etsyListingId ? (
+                      <a
+                        href={`https://www.etsy.com/listing/${p.etsyListingId}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="min-w-0 flex-1 truncate hover:underline"
+                      >
+                        {p.title}
+                      </a>
+                    ) : (
+                      <span className="min-w-0 flex-1 truncate">{p.title}</span>
+                    )}
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      👁 {p.views}
+                      {p.deltaViews > 0 && <span className="text-emerald-700"> +{p.deltaViews}</span>}
+                    </span>
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      ♥ {p.favorers}
+                      {p.deltaFavorers > 0 && <span className="text-emerald-700"> +{p.deltaFavorers}</span>}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </CardContent>
+          </Card>
+        </section>
+      )}
 
       {publishQueue.length > 0 && (
         <section>
