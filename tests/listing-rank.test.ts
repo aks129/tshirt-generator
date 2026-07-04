@@ -33,6 +33,26 @@ describe('rankListingPerformance', () => {
     expect(ranked.map((r) => r.listingId)).toEqual(['x', 'y']); // both Δ10; x has Δfav 3
   });
 
+  it('ranks by Δsales first when sales data is present (money beats attention)', () => {
+    const ranked = rankListingPerformance([
+      { listingId: 'eyeballs', views: 0, favorers: 0, sales: 0, capturedAt: t('2026-06-14') },
+      { listingId: 'eyeballs', views: 500, favorers: 9, sales: 0, capturedAt: t('2026-06-20') },
+      { listingId: 'seller', views: 10, favorers: 0, sales: 1, capturedAt: t('2026-06-14') },
+      { listingId: 'seller', views: 30, favorers: 1, sales: 4, capturedAt: t('2026-06-20') },
+    ]);
+    expect(ranked.map((r) => r.listingId)).toEqual(['seller', 'eyeballs']);
+    expect(ranked[0]).toMatchObject({ sales: 4, deltaSales: 3 });
+    expect(ranked[1]).toMatchObject({ sales: 0, deltaSales: 0 });
+  });
+
+  it('reports sales as null when snapshots lack sales data (scope not granted)', () => {
+    const ranked = rankListingPerformance([
+      { listingId: 'a', views: 5, favorers: 0, sales: null, capturedAt: t('2026-06-20') },
+    ]);
+    expect(ranked[0].sales).toBeNull();
+    expect(ranked[0].deltaSales).toBeNull();
+  });
+
   it('respects the top-N option and handles empty input', () => {
     expect(rankListingPerformance([])).toEqual([]);
     const many = ['a', 'b', 'c'].map((id, i) => ({

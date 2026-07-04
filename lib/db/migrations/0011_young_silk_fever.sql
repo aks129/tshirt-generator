@@ -1,0 +1,1 @@
+ALTER TABLE "listing_stats" ADD COLUMN "sales" integer;

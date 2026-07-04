@@ -74,6 +74,9 @@ export const listingStats = pgTable('listing_stats', {
   etsyListingId: text('etsy_listing_id').notNull(),
   views: integer('views').notNull().default(0),
   favorers: integer('favorers').notNull().default(0),
+  /** Cumulative units sold (from paid receipts). NULL = unknown — the token
+   *  lacked the transactions_r scope when this snapshot was captured. */
+  sales: integer('sales'),
   state: text('state').notNull().default('active'),
   capturedAt: timestamp('captured_at', { withTimezone: true }).defaultNow().notNull(),
 });

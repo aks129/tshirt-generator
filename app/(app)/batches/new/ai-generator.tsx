@@ -8,9 +8,9 @@ import { NicheChips } from '@/components/NicheChips';
 
 const STYLES: DesignStyle[] = ['typography', 'illustration', 'vintage'];
 
-export function AIGenerator({ niches }: { niches: Niche[] }) {
+export function AIGenerator({ niches, initialPrompt }: { niches: Niche[]; initialPrompt?: string }) {
   const router = useRouter();
-  const [prompt, setPrompt] = useState('');
+  const [prompt, setPrompt] = useState(initialPrompt ?? '');
   const [styles, setStyles] = useState<DesignStyle[]>(['typography', 'illustration', 'vintage']);
   const [count, setCount] = useState(5);
   const [nicheTag, setNicheTag] = useState<string | undefined>();

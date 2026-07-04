@@ -22,7 +22,10 @@ export async function POST(req: Request) {
     `https://www.etsy.com/oauth/connect?response_type=code` +
     `&client_id=${encodeURIComponent(apiKey)}` +
     `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-    `&scope=listings_w` +
+    // transactions_r lets the stats cron count actual sales per listing.
+    // Existing tokens keep working for uploads; reconnect in /settings to
+    // grant the new scope and light up sales tracking.
+    `&scope=${encodeURIComponent('listings_w transactions_r')}` +
     `&state=${encodeURIComponent(state)}` +
     `&code_challenge=${encodeURIComponent(codeChallenge)}` +
     `&code_challenge_method=S256`;
