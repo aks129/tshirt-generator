@@ -6,6 +6,7 @@ import { canStartBatch } from '@/lib/caps/enforcement';
 import { designStyleSchema } from '@/lib/schemas';
 import { start } from 'workflow/api';
 import { generateBatch } from '@/app/workflows/generate-batch';
+import { getRequestUser } from '@/lib/auth/current-user';
 import { eq } from 'drizzle-orm';
 
 const bodySchema = z.object({
@@ -27,7 +28,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: caps.reason }, { status: 429 });
   }
 
+  const user = await getRequestUser(req);
   const [row] = await db.insert(batches).values({
+    userId: user?.id,
     prompt: parsed.data.prompt,
     styles: parsed.data.styles,
     requestedCount: parsed.data.count,

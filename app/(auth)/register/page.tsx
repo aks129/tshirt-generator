@@ -4,9 +4,10 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { AuthShell, authInputClass, authButtonClass } from '../auth-shell';
 
-export default function LoginPage() {
+export default function RegisterPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [signupCode, setSignupCode] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const router = useRouter();
@@ -14,16 +15,20 @@ export default function LoginPage() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters');
+      return;
+    }
     setBusy(true);
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        // email is optional — blank uses the shared-password (founder) path.
-        body: JSON.stringify({ email: email.trim() || undefined, password }),
+        body: JSON.stringify({ email: email.trim(), password, signupCode: signupCode.trim() }),
       });
+      const j = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError('Invalid email or password');
+        setError(j.error || 'Registration failed');
         return;
       }
       router.push('/');
@@ -33,7 +38,7 @@ export default function LoginPage() {
   }
 
   return (
-    <AuthShell subtitle="From slogan to Etsy listing.">
+    <AuthShell subtitle="Create your studio (invite-only beta).">
       <form onSubmit={onSubmit} className="space-y-4">
         <input
           type="email"
@@ -48,19 +53,26 @@ export default function LoginPage() {
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          placeholder="Password"
-          autoComplete="current-password"
+          placeholder="Password (min 8 characters)"
+          autoComplete="new-password"
+          className={authInputClass}
+        />
+        <input
+          type="text"
+          value={signupCode}
+          onChange={(e) => setSignupCode(e.target.value)}
+          placeholder="Invite code"
           className={authInputClass}
         />
         {error && <p className="text-sm text-destructive">{error}</p>}
         <button type="submit" disabled={busy} className={authButtonClass}>
-          {busy ? 'Signing in…' : 'Open the studio'}
+          {busy ? 'Creating…' : 'Create account'}
         </button>
       </form>
       <p className="text-center text-sm text-muted-foreground">
-        New here?{' '}
-        <Link href="/register" className="font-medium text-primary hover:underline">
-          Create an account
+        Already have an account?{' '}
+        <Link href="/login" className="font-medium text-primary hover:underline">
+          Sign in
         </Link>
       </p>
     </AuthShell>

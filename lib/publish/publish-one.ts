@@ -1,6 +1,6 @@
 import { and, eq, gte, sql } from 'drizzle-orm';
 import { db } from '@/lib/db/client';
-import { designs, listings } from '@/lib/db/schema';
+import { designs, listings, batches } from '@/lib/db/schema';
 import { checkSafety } from '@/lib/ai/content-safety';
 import { runPublish } from '@/lib/publish/publish-design';
 import { recommendPrice } from '@/lib/etsy/price-recommendation';
@@ -97,12 +97,14 @@ export async function publishOneDesign(
         return { ok: false, error: 'Content blocked', errorKind: 'safety', flags };
       }
     }
+    // Listing inherits its owner from the design's batch (B-1 tenancy).
+    const batch = await db.query.batches.findFirst({ where: eq(batches.id, design.batchId) });
     // Upsert on the unique designId: a design may have a prior 'failed' (or
     // rejected) listing row that the active-status dedup above doesn't match;
     // re-publishing must reuse that row, not violate the unique constraint.
     const [row] = await db
       .insert(listings)
-      .values({ designId, title: copy.title, description: copy.description, tags: copy.tags, status: 'publishing', editedByUser: true })
+      .values({ userId: batch?.userId ?? null, designId, title: copy.title, description: copy.description, tags: copy.tags, status: 'publishing', editedByUser: true })
       .onConflictDoUpdate({
         target: listings.designId,
         set: {

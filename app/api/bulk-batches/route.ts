@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { db } from '@/lib/db/client';
 import { batches, designs } from '@/lib/db/schema';
 import { logEvent } from '@/lib/events';
+import { getRequestUser } from '@/lib/auth/current-user';
 
 export const runtime = 'nodejs';
 
@@ -49,9 +50,11 @@ export async function POST(req: Request) {
 
   const { meta, designs: designInputs } = parsed.data;
 
+  const user = await getRequestUser(req);
   const [batch] = await db
     .insert(batches)
     .values({
+      userId: user?.id,
       prompt: `Bulk: ${designInputs[0].text.slice(0, 80)}${designInputs.length > 1 ? ` (+${designInputs.length - 1} more)` : ''}`,
       styles: ['typography'],
       requestedCount: designInputs.length,

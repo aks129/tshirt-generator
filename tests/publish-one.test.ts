@@ -8,6 +8,7 @@ vi.mock('@/lib/db/client', () => {
         settings: { findFirst: vi.fn() },
         designs: { findFirst: vi.fn() },
         listings: { findFirst: vi.fn() },
+        batches: { findFirst: vi.fn() },
       },
       insert: vi.fn(() => ({
         values: vi.fn(() => ({
@@ -37,6 +38,7 @@ beforeEach(() => {
   vi.mocked(db.query.settings.findFirst).mockResolvedValue(SETTINGS as never);
   vi.mocked(db.query.designs.findFirst).mockResolvedValue(DESIGN as never);
   vi.mocked(db.query.listings.findFirst).mockResolvedValue(undefined as never);
+  vi.mocked(db.query.batches.findFirst).mockResolvedValue({ id: 'b1', userId: 'owner_1' } as never);
   vi.mocked(db.select).mockReturnValue({ from: () => ({ where: async () => [{ count: 0 }] }) } as never);
   vi.mocked(db.insert).mockReturnValue({
     values: vi.fn(() => ({
