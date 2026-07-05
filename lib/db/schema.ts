@@ -19,8 +19,22 @@ export const designStyleEnum = pgEnum('design_style', [
   'typography', 'illustration', 'vintage',
 ]);
 
+// SaaS track (B-1): real per-user identity. The founder row is provisioned
+// lazily on first legacy login (see lib/auth/users.ts:ensureFounderUser).
+export const users = pgTable('users', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  email: text('email').notNull().unique(),
+  passwordHash: text('password_hash').notNull(),
+  displayName: text('display_name'),
+  role: text('role').notNull().default('member'), // 'founder' | 'member'
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
 export const batches = pgTable('batches', {
   id: uuid('id').primaryKey().defaultRandom(),
+  // Nullable during B-1 (backfilled to the founder); NOT NULL comes with the
+  // full query scoping in B-2.
+  userId: uuid('user_id').references(() => users.id),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   prompt: text('prompt').notNull(),
   nicheTag: text('niche_tag'),
@@ -48,6 +62,7 @@ export const designs = pgTable('designs', {
 
 export const listings = pgTable('listings', {
   id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').references(() => users.id),
   designId: uuid('design_id').references(() => designs.id).notNull().unique(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   title: text('title').notNull(),
@@ -92,6 +107,9 @@ export const nicheLibrary = pgTable('niche_library', {
 
 export const settings = pgTable('settings', {
   id: integer('id').primaryKey().default(1),
+  // B-1: settings become per-user by ROW (the id=1 singleton is the founder's
+  // row after backfill). Reads go through a user-scoped helper in B-2.
+  userId: uuid('user_id').references(() => users.id),
   dailyGenerationCap: integer('daily_generation_cap').notNull().default(50),
   dailyPublishCap: integer('daily_publish_cap').notNull().default(15),
   dailyBudgetCents: integer('daily_budget_cents').notNull().default(500),
