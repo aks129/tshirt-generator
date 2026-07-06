@@ -1,12 +1,17 @@
 import { db } from '@/lib/db/client';
 import { listings, designs } from '@/lib/db/schema';
-import { desc, eq } from 'drizzle-orm';
+import { desc, eq, and } from 'drizzle-orm';
 import { ListingsTable } from './listings-table';
 import { SyncButton } from './sync-button';
+import { getCurrentUser } from '@/lib/auth/current-user';
+import { redirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
 
 export default async function ListingsPage() {
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
+
   const rows = await db
     .select({
       id: listings.id,
@@ -26,6 +31,7 @@ export default async function ListingsPage() {
     })
     .from(listings)
     .leftJoin(designs, eq(listings.designId, designs.id))
+    .where(eq(listings.userId, user.id))
     .orderBy(desc(listings.createdAt));
 
   return (
