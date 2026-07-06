@@ -23,14 +23,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: parsed.error.format() }, { status: 400 });
   }
 
-  const caps = await canStartBatch({ requestedCount: parsed.data.count });
+  const user = await getRequestUser(req);
+  if (!user) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
+
+  const caps = await canStartBatch({ requestedCount: parsed.data.count, userId: user.id });
   if (!caps.ok) {
     return NextResponse.json({ ok: false, error: caps.reason }, { status: 429 });
   }
 
-  const user = await getRequestUser(req);
   const [row] = await db.insert(batches).values({
-    userId: user?.id,
+    userId: user.id,
     prompt: parsed.data.prompt,
     styles: parsed.data.styles,
     requestedCount: parsed.data.count,

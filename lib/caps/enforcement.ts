@@ -1,24 +1,28 @@
 import { db } from '../db/client';
-import { designs } from '../db/schema';
-import { gte, sql } from 'drizzle-orm';
+import { designs, batches } from '../db/schema';
+import { and, eq, gte, sql } from 'drizzle-orm';
+import { getSettingsForUser } from '../settings/accessor';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export type CapCheck = { ok: true } | { ok: false; reason: string };
 
-export async function canStartBatch(opts: { requestedCount: number }): Promise<CapCheck> {
-  const s = await db.query.settings.findFirst();
-  if (!s) return { ok: false, reason: 'Settings not seeded' };
+// Caps are per-user (B-3.1): a user's daily generation count/budget is scoped
+// to their own designs (via their batches) and their own settings row.
+export async function canStartBatch(opts: { requestedCount: number; userId: string | null | undefined }): Promise<CapCheck> {
+  if (!opts.userId) return { ok: false, reason: 'No user' };
+  const s = await getSettingsForUser(opts.userId);
   if (s.killSwitchActive) return { ok: false, reason: 'Kill switch active' };
 
   const since = new Date(Date.now() - DAY_MS);
   const rows = await db
     .select({
       count: sql<number>`count(*)::int`,
-      spent: sql<number>`coalesce(sum(generation_cost_cents),0)::int`,
+      spent: sql<number>`coalesce(sum(${designs.generationCostCents}),0)::int`,
     })
     .from(designs)
-    .where(gte(designs.createdAt, since));
+    .innerJoin(batches, eq(designs.batchId, batches.id))
+    .where(and(gte(designs.createdAt, since), eq(batches.userId, opts.userId)));
   const { count = 0, spent = 0 } = rows[0] ?? {};
 
   if (count + opts.requestedCount > s.dailyGenerationCap) {
@@ -30,7 +34,8 @@ export async function canStartBatch(opts: { requestedCount: number }): Promise<C
   return { ok: true };
 }
 
-export async function killSwitchActive(): Promise<boolean> {
-  const s = await db.query.settings.findFirst();
-  return !!s?.killSwitchActive;
+export async function killSwitchActive(userId: string | null | undefined): Promise<boolean> {
+  if (!userId) return false;
+  const s = await getSettingsForUser(userId);
+  return !!s.killSwitchActive;
 }

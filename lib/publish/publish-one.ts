@@ -5,6 +5,7 @@ import { checkSafety } from '@/lib/ai/content-safety';
 import { runPublish } from '@/lib/publish/publish-design';
 import { recommendPrice } from '@/lib/etsy/price-recommendation';
 import { logEvent } from '@/lib/events';
+import { getSettingsForUser } from '@/lib/settings/accessor';
 import type { Concept } from '@/lib/schemas';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -59,8 +60,15 @@ export async function publishOneDesign(
   copy: PublishOneCopy,
   opts: { overrideSafety?: boolean; priceCents?: number; resume?: boolean } = {},
 ): Promise<PublishOneResult> {
-  const s = await db.query.settings.findFirst();
-  if (!s) return { ok: false, error: 'Settings missing', errorKind: 'settings' };
+  const design = await db.query.designs.findFirst({ where: eq(designs.id, designId) });
+  if (!design) return { ok: false, error: 'Design not found', errorKind: 'no_design' };
+  if (!design.imageBlobUrl) return { ok: false, error: 'Design has no image', errorKind: 'no_image' };
+
+  // Config + caps are the design owner's (via its batch). B-3.1 per-user.
+  const batch = await db.query.batches.findFirst({ where: eq(batches.id, design.batchId) });
+  const ownerId = batch?.userId;
+  if (!ownerId) return { ok: false, error: 'Settings missing', errorKind: 'settings' };
+  const s = await getSettingsForUser(ownerId);
   if (s.killSwitchActive) return { ok: false, error: 'Kill switch active', errorKind: 'kill_switch' };
   if (!s.masterPrintifyProductId) return { ok: false, error: 'No master Printify product selected.', errorKind: 'no_master' };
 
@@ -68,14 +76,10 @@ export async function publishOneDesign(
   const [{ count }] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(listings)
-    .where(gte(listings.createdAt, since));
+    .where(and(eq(listings.userId, ownerId), gte(listings.createdAt, since)));
   if (count >= s.dailyPublishCap) {
     return { ok: false, capReached: true, error: `Daily publish cap reached (${count}/${s.dailyPublishCap})` };
   }
-
-  const design = await db.query.designs.findFirst({ where: eq(designs.id, designId) });
-  if (!design) return { ok: false, error: 'Design not found', errorKind: 'no_design' };
-  if (!design.imageBlobUrl) return { ok: false, error: 'Design has no image', errorKind: 'no_image' };
 
   const existing = await db.query.listings.findFirst({
     where: and(eq(listings.designId, designId), sql`status in ('publishing','publishing_slow','live')`),
@@ -97,14 +101,14 @@ export async function publishOneDesign(
         return { ok: false, error: 'Content blocked', errorKind: 'safety', flags };
       }
     }
-    // Listing inherits its owner from the design's batch (B-1 tenancy).
-    const batch = await db.query.batches.findFirst({ where: eq(batches.id, design.batchId) });
+    // Listing inherits its owner from the design's batch (B-1 tenancy) —
+    // resolved above as `ownerId`.
     // Upsert on the unique designId: a design may have a prior 'failed' (or
     // rejected) listing row that the active-status dedup above doesn't match;
     // re-publishing must reuse that row, not violate the unique constraint.
     const [row] = await db
       .insert(listings)
-      .values({ userId: batch?.userId ?? null, designId, title: copy.title, description: copy.description, tags: copy.tags, status: 'publishing', editedByUser: true })
+      .values({ userId: ownerId, designId, title: copy.title, description: copy.description, tags: copy.tags, status: 'publishing', editedByUser: true })
       .onConflictDoUpdate({
         target: listings.designId,
         set: {

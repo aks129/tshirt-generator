@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { db } from '@/lib/db/client';
 import { settings } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
+import { getRequestUser } from '@/lib/auth/current-user';
+import { getSettingsForUser } from '@/lib/settings/accessor';
 
 export const runtime = 'nodejs';
 
@@ -35,13 +37,18 @@ export async function PUT(req: Request) {
     return NextResponse.json({ ok: false, error: 'Invalid body' }, { status: 400 });
   }
 
+  const user = await getRequestUser(req);
+  if (!user) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
+  // Ensure the caller has a settings row, then update by owner (B-3.1 per-user).
+  await getSettingsForUser(user.id);
+
   await db
     .update(settings)
     .set({
       ...parsed.data,
       printifySetupAt: parsed.data.masterPrintifyProductId ? new Date() : null,
     })
-    .where(eq(settings.id, 1));
+    .where(eq(settings.userId, user.id));
 
   return NextResponse.json({ ok: true });
 }

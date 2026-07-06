@@ -10,6 +10,7 @@ import { SCENES } from '@/lib/mockups/custom-mockup';
 import { logEvent } from '@/lib/events';
 import type { Concept } from '@/lib/schemas';
 import { requireOwnedListing } from '@/lib/auth/ownership';
+import { getSettingsForUser } from '@/lib/settings/accessor';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -32,6 +33,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (!listing) return NextResponse.json({ ok: false, error: 'Listing not found' }, { status: 404 });
   if (!listing.etsyListingId) return NextResponse.json({ ok: false, error: 'Listing not yet on Etsy' }, { status: 400 });
   if (listing.status !== 'live') return NextResponse.json({ ok: false, error: `Listing is ${listing.status}` }, { status: 400 });
+  const ownerId = listing.userId;
+  if (!ownerId) return NextResponse.json({ ok: false, error: 'Listing has no owner' }, { status: 400 });
 
   const design = await db.query.designs.findFirst({ where: eq(designs.id, listing.designId) });
   if (!design) return NextResponse.json({ ok: false, error: 'Design not found' }, { status: 404 });
@@ -50,14 +53,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   let accessToken: string;
   try {
-    accessToken = await getEtsyAccessToken();
+    accessToken = await getEtsyAccessToken(ownerId);
   } catch (err) {
     if (err instanceof EtsyAuthNotConnected) return NextResponse.json({ ok: false, error: 'Etsy not connected' }, { status: 400 });
     if (err instanceof EtsyAuthExpired) return NextResponse.json({ ok: false, error: 'Etsy authorization expired' }, { status: 401 });
     return NextResponse.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, { status: 502 });
   }
 
-  const s = await db.query.settings.findFirst();
+  const s = await getSettingsForUser(ownerId);
   const shopId = s?.etsyShopIdOauth;
   if (!shopId) return NextResponse.json({ ok: false, error: 'No Etsy shop connected' }, { status: 400 });
 

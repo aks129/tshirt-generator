@@ -3,6 +3,7 @@ import { db } from '@/lib/db/client';
 import { designs } from '@/lib/db/schema';
 import { fetchMasterProduct } from '@/lib/printify/master-product';
 import { recommendPrice } from '@/lib/etsy/price-recommendation';
+import { getSettingsForDesign } from '@/lib/settings/accessor';
 import type { Concept } from '@/lib/schemas';
 
 // Pre-publish QA. Hard checks block the publish button; soft checks are
@@ -33,7 +34,7 @@ export async function runPreflight(designId: string): Promise<PreflightReport> {
   const checks: CheckResult[] = [];
 
   const design = await db.query.designs.findFirst({ where: eq(designs.id, designId) });
-  const settings = await db.query.settings.findFirst();
+  const settings = await getSettingsForDesign(designId);
 
   // ---- Hard: design exists + image ----
   checks.push({

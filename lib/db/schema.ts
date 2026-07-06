@@ -1,5 +1,5 @@
 import {
-  pgTable, uuid, text, integer, bigint, jsonb, boolean, timestamp, pgEnum,
+  pgTable, uuid, text, integer, bigint, jsonb, boolean, timestamp, pgEnum, uniqueIndex,
 } from 'drizzle-orm/pg-core';
 
 export const batchStatusEnum = pgEnum('batch_status', [
@@ -131,7 +131,11 @@ export const settings = pgTable('settings', {
   // (blueprint, all colors/sizes, per-variant prices, curated mockups). Every
   // publish clones this product's spec with our new design swapped in.
   masterPrintifyProductId: text('master_printify_product_id'),
-});
+}, (t) => ({
+  // B-3.1: one settings row per user (nullable user_id allows the legacy
+  // singleton to coexist; Postgres treats NULLs as distinct so it won't block).
+  userIdUnique: uniqueIndex('settings_user_id_unique').on(t.userId),
+}));
 
 export const generationEvents = pgTable('generation_events', {
   id: uuid('id').primaryKey().defaultRandom(),

@@ -7,6 +7,7 @@ import { fetchMasterProduct } from '@/lib/printify/master-product';
 import { publishOneDesign, type PublishOneCopy } from '@/lib/publish/publish-one';
 import { processListingPhotos } from '@/lib/mockups/process-listing';
 import { logEvent } from '@/lib/events';
+import { getSettingsForDesign } from '@/lib/settings/accessor';
 import type { Concept } from '@/lib/schemas';
 
 export async function loadApprovedDesignIdsStep(batchId: string): Promise<string[]> {
@@ -25,7 +26,7 @@ export async function draftOneStep(designId: string): Promise<{ ok: boolean; cop
 
   let garment: string | null = null;
   try {
-    const s = await db.query.settings.findFirst();
+    const s = await getSettingsForDesign(designId);
     if (s?.masterPrintifyProductId) {
       const master = await fetchMasterProduct(s.masterPrintifyProductId);
       garment = await getGarmentDescriptor(master.blueprintId);

@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db/client';
 import { listings, designs } from '@/lib/db/schema';
 import { getEtsyAccessToken } from '@/lib/etsy/oauth-client';
+import { getSettingsForUser } from '@/lib/settings/accessor';
 import { EtsyAuthExpired, EtsyAuthNotConnected, EtsyUploadError } from '@/lib/etsy/errors';
 import { uploadEtsyListingImage } from '@/lib/mockups/upload-to-etsy';
 import { fetchPrintifyMockups, downloadMockup, type PrintifyMockup } from '@/lib/mockups/printify-mockups';
@@ -50,17 +51,20 @@ export async function processListingPhotos(
   const design = await db.query.designs.findFirst({ where: eq(designs.id, listing.designId) });
   if (!design) return { ok: false, errorCode: 'NO_DESIGN', status: 400, message: 'Design not found' };
 
+  const ownerId = listing.userId;
+  if (!ownerId) return { ok: false, errorCode: 'NOT_CONNECTED', status: 400, message: 'Listing has no owner' };
+
   let accessToken: string;
   try {
-    accessToken = await getEtsyAccessToken();
+    accessToken = await getEtsyAccessToken(ownerId);
   } catch (err) {
     if (err instanceof EtsyAuthNotConnected) return { ok: false, errorCode: 'NOT_CONNECTED', status: 400, message: 'Etsy not connected' };
     if (err instanceof EtsyAuthExpired) return { ok: false, errorCode: 'AUTH_EXPIRED', status: 401, message: 'Etsy authorization expired' };
     return { ok: false, errorCode: 'AUTH_ERROR', status: 502, message: err instanceof Error ? err.message : String(err) };
   }
 
-  const s = await db.query.settings.findFirst();
-  const shopId = s?.etsyShopIdOauth;
+  const s = await getSettingsForUser(ownerId);
+  const shopId = s.etsyShopIdOauth;
   if (!shopId) return { ok: false, errorCode: 'NO_SHOP', status: 400, message: 'No Etsy shop on connected account' };
 
   // Some blueprints (e.g. Comfort Colors 1717) get their FULL per-color
@@ -118,7 +122,7 @@ export async function processListingPhotos(
       const status = err instanceof EtsyUploadError ? err.status : 0;
       if (status === 401) {
         try {
-          accessToken = await getEtsyAccessToken();
+          accessToken = await getEtsyAccessToken(ownerId);
           await tryUpload();
           uploaded++;
         } catch (err2) {

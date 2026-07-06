@@ -5,6 +5,7 @@ import { listings, listingStats } from '@/lib/db/schema';
 import { fetchEtsyListingStats } from '@/lib/etsy/listing-stats';
 import { fetchSalesByListing } from '@/lib/etsy/receipts';
 import { getEtsyAccessToken } from '@/lib/etsy/oauth-client';
+import { getFounderSettings } from '@/lib/settings/accessor';
 import { logEvent } from '@/lib/events';
 
 export const runtime = 'nodejs';
@@ -29,11 +30,13 @@ export async function GET(req: Request) {
   // Sales need seller OAuth with the transactions_r scope. Tokens granted
   // before that scope was added will 403 — record sales as unknown (null)
   // rather than failing the run; the operator reconnects Etsy to enable it.
+  // B-3.1: founder-scoped for now (single Etsy shop). Per-user sales
+  // attribution across tenants is deferred to B-3.1b's per-user cron pass.
   let salesByListing: Map<string, number> | null = null;
   try {
-    const s = await db.query.settings.findFirst();
-    if (s?.etsyShopIdOauth) {
-      const accessToken = await getEtsyAccessToken();
+    const s = await getFounderSettings();
+    if (s?.etsyShopIdOauth && s.userId) {
+      const accessToken = await getEtsyAccessToken(s.userId);
       salesByListing = await fetchSalesByListing({ accessToken, shopId: Number(s.etsyShopIdOauth) });
     }
   } catch {

@@ -3,6 +3,8 @@ import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db/client';
 import { settings } from '@/lib/db/schema';
 import { exchangeCode, fetchEtsyUserShop } from '@/lib/etsy/oauth-client';
+import { getRequestUser } from '@/lib/auth/current-user';
+import { getSettingsForUser } from '@/lib/settings/accessor';
 
 export const runtime = 'nodejs';
 
@@ -30,6 +32,10 @@ export async function GET(req: Request) {
 
   if (error) return settingsRedirect(req, { etsy: 'error', reason: error });
   if (!code || !state) return settingsRedirect(req, { etsy: 'error', reason: 'missing_code_or_state' });
+
+  // The Etsy connection binds to the logged-in user's settings row (B-3.1).
+  const user = await getRequestUser(req);
+  if (!user) return settingsRedirect(req, { etsy: 'error', reason: 'not_logged_in' });
 
   const cookieValue = req.headers
     .get('cookie')
@@ -64,6 +70,7 @@ export async function GET(req: Request) {
     /* tolerate missing shop info — operator may have no shop yet */
   }
 
+  await getSettingsForUser(user.id); // ensure the row exists
   await db
     .update(settings)
     .set({
@@ -73,7 +80,7 @@ export async function GET(req: Request) {
       etsyRefreshToken: tokens.refreshToken,
       etsyTokenExpiresAt: tokens.expiresAt,
     })
-    .where(eq(settings.id, 1));
+    .where(eq(settings.userId, user.id));
 
   return settingsRedirect(req, { etsy: 'connected' });
 }

@@ -7,13 +7,21 @@ vi.mock('@/lib/db/client', () => ({
   },
 }));
 
+// B-3.1: getEtsyAccessToken reads the user's settings row via the accessor.
+vi.mock('@/lib/settings/accessor', () => ({
+  getSettingsForUser: vi.fn(),
+}));
+
 beforeEach(() => {
   vi.stubEnv('ETSY_API_KEY', 'test-keystring');
 });
 
 import { db } from '@/lib/db/client';
+import { getSettingsForUser } from '@/lib/settings/accessor';
 import { getEtsyAccessToken } from '@/lib/etsy/oauth-client';
 import { EtsyAuthNotConnected, EtsyAuthExpired } from '@/lib/etsy/errors';
+
+const USER = 'user-1';
 
 function chainUpdateMock() {
   vi.mocked(db.update).mockReturnValue({
@@ -23,27 +31,27 @@ function chainUpdateMock() {
 
 describe('getEtsyAccessToken', () => {
   it('throws EtsyAuthNotConnected when no access token', async () => {
-    vi.mocked(db.query.settings.findFirst).mockResolvedValue({
-      id: 1, etsyAccessToken: null, etsyRefreshToken: null, etsyTokenExpiresAt: null,
+    vi.mocked(getSettingsForUser).mockResolvedValue({
+      id: 1, userId: USER, etsyAccessToken: null, etsyRefreshToken: null, etsyTokenExpiresAt: null,
     } as never);
-    await expect(getEtsyAccessToken()).rejects.toBeInstanceOf(EtsyAuthNotConnected);
+    await expect(getEtsyAccessToken(USER)).rejects.toBeInstanceOf(EtsyAuthNotConnected);
   });
 
   it('returns current token if fresh (>60s from expiry)', async () => {
     const future = new Date(Date.now() + 10 * 60 * 1000);
-    vi.mocked(db.query.settings.findFirst).mockResolvedValue({
-      id: 1, etsyAccessToken: 'abc.fresh', etsyRefreshToken: 'r', etsyTokenExpiresAt: future,
+    vi.mocked(getSettingsForUser).mockResolvedValue({
+      id: 1, userId: USER, etsyAccessToken: 'abc.fresh', etsyRefreshToken: 'r', etsyTokenExpiresAt: future,
     } as never);
     const fetchSpy = vi.spyOn(global, 'fetch');
-    const t = await getEtsyAccessToken();
+    const t = await getEtsyAccessToken(USER);
     expect(t).toBe('abc.fresh');
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it('refreshes when within 60s of expiry, persists new tokens', async () => {
     const soon = new Date(Date.now() + 30 * 1000);
-    vi.mocked(db.query.settings.findFirst).mockResolvedValue({
-      id: 1, etsyAccessToken: 'abc.stale', etsyRefreshToken: 'oldRefresh', etsyTokenExpiresAt: soon,
+    vi.mocked(getSettingsForUser).mockResolvedValue({
+      id: 1, userId: USER, etsyAccessToken: 'abc.stale', etsyRefreshToken: 'oldRefresh', etsyTokenExpiresAt: soon,
     } as never);
     chainUpdateMock();
     vi.spyOn(global, 'fetch').mockResolvedValueOnce(
@@ -51,19 +59,19 @@ describe('getEtsyAccessToken', () => {
         status: 200, headers: { 'content-type': 'application/json' },
       }),
     );
-    const t = await getEtsyAccessToken();
+    const t = await getEtsyAccessToken(USER);
     expect(t).toBe('12345.new');
   });
 
   it('clears tokens + throws EtsyAuthExpired on 401 from token endpoint', async () => {
-    vi.mocked(db.query.settings.findFirst).mockResolvedValue({
-      id: 1, etsyAccessToken: 'abc.stale', etsyRefreshToken: 'oldRefresh',
+    vi.mocked(getSettingsForUser).mockResolvedValue({
+      id: 1, userId: USER, etsyAccessToken: 'abc.stale', etsyRefreshToken: 'oldRefresh',
       etsyTokenExpiresAt: new Date(Date.now() - 1000),
     } as never);
     chainUpdateMock();
     vi.spyOn(global, 'fetch').mockResolvedValueOnce(
       new Response('{"error":"invalid_grant"}', { status: 400 }),
     );
-    await expect(getEtsyAccessToken()).rejects.toBeInstanceOf(EtsyAuthExpired);
+    await expect(getEtsyAccessToken(USER)).rejects.toBeInstanceOf(EtsyAuthExpired);
   });
 });

@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db/client';
 import { settings } from '@/lib/db/schema';
 import { EtsyAuthNotConnected, EtsyAuthExpired } from './errors';
+import { getSettingsForUser } from '@/lib/settings/accessor';
 
 const ETSY_TOKEN_URL = 'https://api.etsy.com/v3/public/oauth/token';
 const REFRESH_BUFFER_MS = 60_000;
@@ -97,9 +98,12 @@ async function refreshAccessToken(refreshToken: string): Promise<TokenExchangeRe
   };
 }
 
-export async function getEtsyAccessToken(): Promise<string> {
-  const s = await db.query.settings.findFirst();
-  if (!s?.etsyAccessToken || !s.etsyRefreshToken || !s.etsyTokenExpiresAt) {
+/** Returns a valid Etsy access token for the given user, refreshing (and
+ *  persisting the new tokens on that user's settings row) when near expiry.
+ *  B-3.1: scoped by user_id, not the singleton. */
+export async function getEtsyAccessToken(userId: string): Promise<string> {
+  const s = await getSettingsForUser(userId);
+  if (!s.etsyAccessToken || !s.etsyRefreshToken || !s.etsyTokenExpiresAt) {
     throw new EtsyAuthNotConnected();
   }
   const expiresMs = s.etsyTokenExpiresAt.getTime();
@@ -113,12 +117,8 @@ export async function getEtsyAccessToken(): Promise<string> {
     if (err instanceof EtsyAuthExpired) {
       await db
         .update(settings)
-        .set({
-          etsyAccessToken: null,
-          etsyRefreshToken: null,
-          etsyTokenExpiresAt: null,
-        })
-        .where(eq(settings.id, 1));
+        .set({ etsyAccessToken: null, etsyRefreshToken: null, etsyTokenExpiresAt: null })
+        .where(eq(settings.userId, userId));
     }
     throw err;
   }
@@ -129,7 +129,7 @@ export async function getEtsyAccessToken(): Promise<string> {
       etsyRefreshToken: refreshed.refreshToken,
       etsyTokenExpiresAt: refreshed.expiresAt,
     })
-    .where(eq(settings.id, 1));
+    .where(eq(settings.userId, userId));
   return refreshed.accessToken;
 }
 
