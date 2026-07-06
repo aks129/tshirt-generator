@@ -1,0 +1,9 @@
+# Suppresses the security-baseline "Claude over-sharing: docs/superpowers/"
+# rule for this repository.
+#
+# Design specs and implementation plans living under docs/superpowers/specs/
+# and docs/superpowers/plans/ are an intentional, documented convention here
+# (see CLAUDE.md → "Conventions": "Plans + specs live in
+# docs/superpowers/plans/ and docs/superpowers/specs/"). They are product
+# design records, not leaked agent-workspace content, and are meant to be
+# checked in and reviewed alongside the code they describe.

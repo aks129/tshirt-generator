@@ -5,6 +5,7 @@ import { listings, designs } from '@/lib/db/schema';
 import { runPublish } from '@/lib/publish/publish-design';
 import { logEvent } from '@/lib/events';
 import { requireOwnedListing } from '@/lib/auth/ownership';
+import { getSettingsForListing } from '@/lib/settings/accessor';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -21,7 +22,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (!design?.imageBlobUrl) {
     return NextResponse.json({ ok: false, error: 'Design image missing' }, { status: 400 });
   }
-  const s = await db.query.settings.findFirst();
+  const s = await getSettingsForListing(id);
   if (!s?.masterPrintifyProductId) {
     return NextResponse.json({ ok: false, error: 'No master Printify product configured' }, { status: 400 });
   }

@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db/client';
+import { getRequestUser } from '@/lib/auth/current-user';
+import { getSettingsForUser } from '@/lib/settings/accessor';
 
 export const runtime = 'nodejs';
 
-export async function GET() {
-  const s = await db.query.settings.findFirst();
+export async function GET(req: Request) {
+  const user = await getRequestUser(req);
+  if (!user) return NextResponse.json({ floorCents: 1499 });
+  const s = await getSettingsForUser(user.id);
   return NextResponse.json({ floorCents: s?.minPriceFloorCents ?? 1499 });
 }

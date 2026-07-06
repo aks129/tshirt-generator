@@ -1,19 +1,20 @@
 // tests/draft-listing-garment.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const settingsFindFirst = vi.fn();
+const settingsForDesign = vi.fn();
 const designsFindFirst = vi.fn();
 const dbUpdate = vi.fn((..._a: unknown[]) => ({ set: () => ({ where: vi.fn() }) }));
 
 vi.mock('@/lib/db/client', () => ({
   db: {
     query: {
-      settings: { findFirst: (...a: unknown[]) => settingsFindFirst(...a) },
       designs: { findFirst: (...a: unknown[]) => designsFindFirst(...a) },
     },
     update: (...a: unknown[]) => dbUpdate(...a),
   },
 }));
+// B-3.1: settings resolved per-design via the accessor.
+vi.mock('@/lib/settings/accessor', () => ({ getSettingsForDesign: (...a: unknown[]) => settingsForDesign(...a) }));
 vi.mock('@/lib/printify/master-product', () => ({ fetchMasterProduct: vi.fn() }));
 vi.mock('@/lib/printify/garment-descriptor', () => ({ getGarmentDescriptor: vi.fn() }));
 vi.mock('@/lib/ai/listing-copy', () => ({ draftListingCopy: vi.fn() }));
@@ -29,7 +30,7 @@ import { draftListingCopy } from '@/lib/ai/listing-copy';
 beforeEach(() => {
   vi.clearAllMocks();
   designsFindFirst.mockResolvedValue({ id: 'd1', batchId: 'b1', concept: { headline: 'Cat Mom Energy' }, listingDraft: null });
-  settingsFindFirst.mockResolvedValue({ masterPrintifyProductId: 'p1' });
+  settingsForDesign.mockResolvedValue({ masterPrintifyProductId: 'p1' });
   vi.mocked(fetchMasterProduct).mockResolvedValue({ blueprintId: 6 } as never);
   vi.mocked(getGarmentDescriptor).mockResolvedValue('Bella+Canvas 3001');
   vi.mocked(draftListingCopy).mockResolvedValue({ title: 't', tags: [], description: 'd', source: 'gemini' } as never);

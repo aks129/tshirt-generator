@@ -23,9 +23,9 @@ export async function loadBatchStep(batchId: string) {
   return row;
 }
 
-export async function checkCapsStep(requestedCount: number) {
+export async function checkCapsStep(requestedCount: number, userId: string | null) {
   'use step';
-  return canStartBatch({ requestedCount });
+  return canStartBatch({ requestedCount, userId });
 }
 
 export async function markBatchFailedStep(batchId: string, reason: string) {
@@ -57,10 +57,10 @@ export async function markBatchReadyStep(batchId: string) {
   await db.update(batches).set({ status: 'ready' }).where(eq(batches.id, batchId));
 }
 
-export async function generateOneDesignStep(designId: string, concept: Concept, batchId: string) {
+export async function generateOneDesignStep(designId: string, concept: Concept, batchId: string, userId: string | null) {
   'use step';
   try {
-    if (await killSwitchActive()) {
+    if (await killSwitchActive(userId)) {
       await db.update(designs).set({ status: 'failed', failureReason: 'Kill switch active' })
         .where(eq(designs.id, designId));
       return;

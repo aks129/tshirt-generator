@@ -5,6 +5,7 @@ import { designs } from '@/lib/db/schema';
 import { recommendPrice } from '@/lib/etsy/price-recommendation';
 import type { Concept } from '@/lib/schemas';
 import { requireOwnedDesign } from '@/lib/auth/ownership';
+import { getSettingsForDesign } from '@/lib/settings/accessor';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
@@ -18,7 +19,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const design = await db.query.designs.findFirst({ where: eq(designs.id, id) });
   if (!design) return NextResponse.json({ ok: false, error: 'Design not found' }, { status: 404 });
 
-  const settings = await db.query.settings.findFirst();
+  const settings = await getSettingsForDesign(id);
   if (!settings) return NextResponse.json({ ok: false, error: 'Settings missing' }, { status: 500 });
 
   const concept = design.concept as Concept;

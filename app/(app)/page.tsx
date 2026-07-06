@@ -8,6 +8,7 @@ import { AiHealthCard } from './ai-health-card';
 import { StatusBadge } from '@/components/status-badge';
 import { rankListingPerformance } from '@/lib/insights/listing-rank';
 import { getCurrentUser } from '@/lib/auth/current-user';
+import { getSettingsForUser } from '@/lib/settings/accessor';
 import { redirect } from 'next/navigation';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -85,7 +86,7 @@ export default async function Dashboard() {
     headline: listingMeta.get(p.listingId)?.headline ?? null,
   }));
 
-  const s = await db.query.settings.findFirst();
+  const s = await getSettingsForUser(owned);
   const needsSetup = !s?.printifySetupAt;
   const needsEtsy = !s?.etsyAccessToken;
   const hasLiveListings = (weekStats?.live ?? 0) > 0;

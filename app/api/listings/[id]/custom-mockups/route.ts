@@ -12,6 +12,7 @@ import { uploadEtsyListingImage } from '@/lib/mockups/upload-to-etsy';
 import { logEvent } from '@/lib/events';
 import type { Concept } from '@/lib/schemas';
 import { requireOwnedListing } from '@/lib/auth/ownership';
+import { getSettingsForUser } from '@/lib/settings/accessor';
 
 export const runtime = 'nodejs';
 // Recraft generation can run 8-12s per image. 3 in parallel + composites +
@@ -30,6 +31,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const listing = await db.query.listings.findFirst({ where: eq(listings.id, id) });
   if (!listing) return NextResponse.json({ ok: false, error: 'Listing not found' }, { status: 404 });
+  const ownerId = listing.userId;
+  if (!ownerId) return NextResponse.json({ ok: false, error: 'Listing has no owner' }, { status: 400 });
   if (!saveOnly && !listing.etsyListingId) {
     return NextResponse.json({ ok: false, error: 'Listing not yet on Etsy' }, { status: 400 });
   }
@@ -49,7 +52,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   // leaves tones undefined and the generator falls back to light scenes.
   let tones: Set<ShirtTone> | undefined;
   try {
-    const cfg = await db.query.settings.findFirst();
+    const cfg = await getSettingsForUser(ownerId);
     if (cfg?.masterPrintifyProductId) {
       const master = await fetchMasterProduct(cfg.masterPrintifyProductId);
       tones = await fetchConfiguredTones({
@@ -107,7 +110,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   // Upload to Etsy
   let accessToken: string;
   try {
-    accessToken = await getEtsyAccessToken();
+    accessToken = await getEtsyAccessToken(ownerId);
   } catch (err) {
     if (err instanceof EtsyAuthNotConnected) {
       return NextResponse.json({
@@ -130,7 +133,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }, { status: 502 });
   }
 
-  const s = await db.query.settings.findFirst();
+  const s = await getSettingsForUser(ownerId);
   const shopId = s?.etsyShopIdOauth;
   if (!shopId) {
     return NextResponse.json({

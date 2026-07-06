@@ -14,7 +14,7 @@ export async function generateBatch(batchId: string) {
 
   const batch = await loadBatchStep(batchId);
 
-  const caps = await checkCapsStep(batch.requestedCount);
+  const caps = await checkCapsStep(batch.requestedCount, batch.userId);
   if (!caps.ok) {
     await markBatchFailedStep(batchId, caps.reason);
     return { ok: false, reason: caps.reason };
@@ -32,7 +32,7 @@ export async function generateBatch(batchId: string) {
   for (let i = 0; i < designRows.length; i += concurrency) {
     const slice = designRows.slice(i, i + concurrency);
     await Promise.all(slice.map((d) =>
-      generateOneDesignStep(d.id, d.concept as Concept, batchId)
+      generateOneDesignStep(d.id, d.concept as Concept, batchId, batch.userId)
     ));
   }
 

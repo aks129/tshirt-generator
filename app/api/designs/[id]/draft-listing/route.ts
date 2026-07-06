@@ -8,6 +8,7 @@ import { getGarmentDescriptor } from '@/lib/printify/garment-descriptor';
 import { logEvent } from '@/lib/events';
 import type { Concept } from '@/lib/schemas';
 import { requireOwnedDesign } from '@/lib/auth/ownership';
+import { getSettingsForDesign } from '@/lib/settings/accessor';
 
 export const runtime = 'nodejs';
 
@@ -34,7 +35,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   // and the generator applies its safe default.
   let garment: string | undefined;
   try {
-    const s = await db.query.settings.findFirst();
+    const s = await getSettingsForDesign(id);
     if (s?.masterPrintifyProductId) {
       const master = await fetchMasterProduct(s.masterPrintifyProductId);
       garment = (await getGarmentDescriptor(master.blueprintId)) ?? undefined;
