@@ -7,27 +7,37 @@ import { RecentBatches } from './recent-batches';
 import { AiHealthCard } from './ai-health-card';
 import { StatusBadge } from '@/components/status-badge';
 import { rankListingPerformance } from '@/lib/insights/listing-rank';
+import { getCurrentUser } from '@/lib/auth/current-user';
+import { redirect } from 'next/navigation';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export const dynamic = 'force-dynamic';
 
 export default async function Dashboard() {
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
+  const owned = user.id;
+
   const since = new Date(Date.now() - 7 * DAY_MS);
   const today = new Date(Date.now() - DAY_MS);
 
+  // designs have no user_id — scope through their batch's owner.
   const [weekStats] = await db.select({
     generated: sql<number>`count(*)::int`,
-    approved: sql<number>`count(*) filter (where status in ('approved','publishing','live'))::int`,
-    live: sql<number>`count(*) filter (where status='live')::int`,
-  }).from(designs).where(gte(designs.createdAt, since));
+    approved: sql<number>`count(*) filter (where ${designs.status} in ('approved','publishing','live'))::int`,
+    live: sql<number>`count(*) filter (where ${designs.status}='live')::int`,
+  }).from(designs).innerJoin(batches, eq(designs.batchId, batches.id))
+    .where(and(gte(designs.createdAt, since), eq(batches.userId, owned)));
 
   const [todayStats] = await db.select({
     count: sql<number>`count(*)::int`,
-    spent: sql<number>`coalesce(sum(generation_cost_cents),0)::int`,
-  }).from(designs).where(gte(designs.createdAt, today));
+    spent: sql<number>`coalesce(sum(${designs.generationCostCents}),0)::int`,
+  }).from(designs).innerJoin(batches, eq(designs.batchId, batches.id))
+    .where(and(gte(designs.createdAt, today), eq(batches.userId, owned)));
 
   const recent = await db.query.batches.findMany({
+    where: eq(batches.userId, owned),
     orderBy: [desc(batches.createdAt)],
     limit: 6,
   });
@@ -35,7 +45,7 @@ export default async function Dashboard() {
   const publishQueue = await db
     .select({ id: listings.id, title: listings.title, status: listings.status, createdAt: listings.createdAt })
     .from(listings)
-    .where(or(eq(listings.status, 'publishing'), eq(listings.status, 'publishing_slow')))
+    .where(and(eq(listings.userId, owned), or(eq(listings.status, 'publishing'), eq(listings.status, 'publishing_slow'))))
     .orderBy(desc(listings.createdAt))
     .limit(6);
 
@@ -56,7 +66,7 @@ export default async function Dashboard() {
     .from(listingStats)
     .innerJoin(listings, eq(listingStats.listingId, listings.id))
     .innerJoin(designs, eq(listings.designId, designs.id))
-    .where(and(eq(listings.status, 'live'), gte(listingStats.capturedAt, since)));
+    .where(and(eq(listings.userId, owned), eq(listings.status, 'live'), gte(listingStats.capturedAt, since)));
 
   const listingMeta = new Map(
     snapshots.map((r) => [

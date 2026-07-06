@@ -2,21 +2,25 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db/client';
 import { batches, designs, listings, generationEvents } from '@/lib/db/schema';
 import { eq, inArray, and } from 'drizzle-orm';
+import { getRequestUser } from '@/lib/auth/current-user';
 
 export const runtime = 'nodejs';
 
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const user = await getRequestUser(req);
   const batch = await db.query.batches.findFirst({ where: eq(batches.id, id) });
-  if (!batch) return NextResponse.json({ ok: false }, { status: 404 });
+  // 404 on a non-owned batch — don't reveal it exists.
+  if (!batch || batch.userId !== user?.id) return NextResponse.json({ ok: false }, { status: 404 });
   const designRows = await db.query.designs.findMany({ where: eq(designs.batchId, id) });
   return NextResponse.json({ ok: true, batch, designs: designRows });
 }
 
-export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const user = await getRequestUser(req);
   const batch = await db.query.batches.findFirst({ where: eq(batches.id, id) });
-  if (!batch) return NextResponse.json({ ok: false, error: 'Not found' }, { status: 404 });
+  if (!batch || batch.userId !== user?.id) return NextResponse.json({ ok: false, error: 'Not found' }, { status: 404 });
 
   const designRows = await db.query.designs.findMany({ where: eq(designs.batchId, id) });
   const designIds = designRows.map((d) => d.id);
