@@ -4,12 +4,14 @@ import { db } from '@/lib/db/client';
 import { designs } from '@/lib/db/schema';
 import { recommendPrice } from '@/lib/etsy/price-recommendation';
 import type { Concept } from '@/lib/schemas';
+import { requireOwnedDesign } from '@/lib/auth/ownership';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  if (!(await requireOwnedDesign(req, id))) return NextResponse.json({ ok: false }, { status: 404 });
   const url = new URL(req.url);
   const force = url.searchParams.get('force') === 'true';
 

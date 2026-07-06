@@ -7,11 +7,13 @@ import { fetchMasterProduct } from '@/lib/printify/master-product';
 import { getGarmentDescriptor } from '@/lib/printify/garment-descriptor';
 import { logEvent } from '@/lib/events';
 import type { Concept } from '@/lib/schemas';
+import { requireOwnedDesign } from '@/lib/auth/ownership';
 
 export const runtime = 'nodejs';
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  if (!(await requireOwnedDesign(req, id))) return NextResponse.json({ ok: false }, { status: 404 });
   const url = new URL(req.url);
   const force = url.searchParams.get('force') === 'true';
 

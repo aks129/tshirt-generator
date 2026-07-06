@@ -6,15 +6,20 @@ import { logEvent } from '@/lib/events';
 import { start } from 'workflow/api';
 import { generateBatch } from '@/app/workflows/generate-batch';
 import type { Concept } from '@/lib/schemas';
+import { requireOwnedDesign } from '@/lib/auth/ownership';
+import { getRequestUser } from '@/lib/auth/current-user';
 
-export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  if (!(await requireOwnedDesign(req, id))) return NextResponse.json({ ok: false }, { status: 404 });
+  const user = await getRequestUser(req);
   const original = await db.query.designs.findFirst({ where: eq(designs.id, id) });
   if (!original) return NextResponse.json({ ok: false }, { status: 404 });
 
   await db.update(designs).set({ status: 'rejected' }).where(eq(designs.id, id));
 
   const [newBatch] = await db.insert(batches).values({
+    userId: user?.id,
     prompt: `(regenerate) ${(original.concept as Concept).headline}`,
     styles: [original.style],
     requestedCount: 1,

@@ -4,13 +4,14 @@ import { db } from '@/lib/db/client';
 import { listings, designs } from '@/lib/db/schema';
 import { runPublish } from '@/lib/publish/publish-design';
 import { logEvent } from '@/lib/events';
+import { requireOwnedListing } from '@/lib/auth/ownership';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
-export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const listing = await db.query.listings.findFirst({ where: eq(listings.id, id) });
+  const listing = await requireOwnedListing(req, id);
   if (!listing) return NextResponse.json({ ok: false, error: 'Not found' }, { status: 404 });
   if (listing.status === 'live') {
     return NextResponse.json({ ok: true, status: 'live', listing });

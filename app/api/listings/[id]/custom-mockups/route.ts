@@ -11,6 +11,7 @@ import { fetchConfiguredTones, type ShirtTone } from '@/lib/printify/variant-col
 import { uploadEtsyListingImage } from '@/lib/mockups/upload-to-etsy';
 import { logEvent } from '@/lib/events';
 import type { Concept } from '@/lib/schemas';
+import { requireOwnedListing } from '@/lib/auth/ownership';
 
 export const runtime = 'nodejs';
 // Recraft generation can run 8-12s per image. 3 in parallel + composites +
@@ -21,6 +22,7 @@ const CUSTOM_RANK_START = 2;
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  if (!(await requireOwnedListing(req, id))) return NextResponse.json({ ok: false, error: 'Not found' }, { status: 404 });
   const url = new URL(req.url);
   // When true, only generate + persist to Blob; skip Etsy upload. Useful for
   // 'just save for later' flows.

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { listingCopySchema } from '@/lib/etsy/validators';
 import { publishOneDesign } from '@/lib/publish/publish-one';
+import { requireOwnedDesign } from '@/lib/auth/ownership';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -24,6 +25,11 @@ export async function POST(req: Request) {
     );
   }
   const { design_id, title, tags, description, override_safety, price_cents } = parsed.data;
+
+  // Ownership: the design must belong to the requesting user.
+  if (!(await requireOwnedDesign(req, design_id))) {
+    return NextResponse.json({ ok: false, error: 'Not found' }, { status: 404 });
+  }
 
   const r = await publishOneDesign(design_id, { title, description, tags }, {
     overrideSafety: override_safety,
