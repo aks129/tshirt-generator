@@ -4,12 +4,13 @@ import { batches } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { start } from 'workflow/api';
 import { publishBatch } from '@/app/workflows/publish-batch';
+import { requireOwnedBatch } from '@/lib/auth/ownership';
 
 export const runtime = 'nodejs';
 
-export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const batch = await db.query.batches.findFirst({ where: eq(batches.id, id) });
+  const batch = await requireOwnedBatch(req, id);
   if (!batch) return NextResponse.json({ ok: false, error: 'Batch not found' }, { status: 404 });
 
   const run = await start(publishBatch, [id]);

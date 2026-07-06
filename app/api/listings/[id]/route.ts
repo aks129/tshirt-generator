@@ -4,12 +4,13 @@ import { db } from '@/lib/db/client';
 import { listings, designs } from '@/lib/db/schema';
 import { getProduct } from '@/lib/printify/get-product';
 import { deletePrintifyProduct } from '@/lib/printify/delete-product';
+import { requireOwnedListing } from '@/lib/auth/ownership';
 
 export const runtime = 'nodejs';
 
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const row = await db.query.listings.findFirst({ where: eq(listings.id, id) });
+  const row = await requireOwnedListing(req, id);
   if (!row) return NextResponse.json({ ok: false }, { status: 404 });
 
   if ((row.status === 'publishing' || row.status === 'publishing_slow') && row.printifyProductId) {
@@ -38,9 +39,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   return NextResponse.json({ ok: true, listing: row });
 }
 
-export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const row = await db.query.listings.findFirst({ where: eq(listings.id, id) });
+  const row = await requireOwnedListing(req, id);
   if (!row) return NextResponse.json({ ok: false, error: 'Not found' }, { status: 404 });
 
   // Allow live deletes — the UI confirms the caller knows it won't unlist

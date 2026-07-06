@@ -9,6 +9,7 @@ import { uploadEtsyListingImage } from '@/lib/mockups/upload-to-etsy';
 import { SCENES } from '@/lib/mockups/custom-mockup';
 import { logEvent } from '@/lib/events';
 import type { Concept } from '@/lib/schemas';
+import { requireOwnedListing } from '@/lib/auth/ownership';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -20,6 +21,7 @@ const bodySchema = z.object({
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  if (!(await requireOwnedListing(req, id))) return NextResponse.json({ ok: false, error: 'Not found' }, { status: 404 });
   const raw = await req.json().catch(() => null);
   const parsed = bodySchema.safeParse(raw);
   if (!parsed.success) {

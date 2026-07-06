@@ -5,18 +5,22 @@ import { listings, designs } from '@/lib/db/schema';
 import { getProduct } from '@/lib/printify/get-product';
 import { PrintifyError } from '@/lib/printify/client';
 import { logEvent } from '@/lib/events';
+import { getRequestUser } from '@/lib/auth/current-user';
 
 export const runtime = 'nodejs';
 export const maxDuration = 90;
 
-// On-demand mirror of the cron's external-deletion pass. Live listings are
-// checked against Printify; any whose product 404s flips to 'failed' with a
-// reason note. Other errors (5xx, network) leave the row live.
-export async function POST() {
+// On-demand mirror of the cron's external-deletion pass, scoped to the
+// requesting user's live listings. Any whose Printify product 404s flips to
+// 'failed'. Other errors (5xx, network) leave the row live.
+export async function POST(req: Request) {
+  const user = await getRequestUser(req);
+  if (!user) return NextResponse.json({ ok: false }, { status: 401 });
+
   const liveListings = await db
     .select()
     .from(listings)
-    .where(and(eq(listings.status, 'live'), isNotNull(listings.printifyProductId)));
+    .where(and(eq(listings.userId, user.id), eq(listings.status, 'live'), isNotNull(listings.printifyProductId)));
 
   let checked = 0;
   let externallyDeleted = 0;

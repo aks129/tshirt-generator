@@ -18,6 +18,8 @@ vi.mock('@/lib/printify/master-product', () => ({ fetchMasterProduct: vi.fn() })
 vi.mock('@/lib/printify/garment-descriptor', () => ({ getGarmentDescriptor: vi.fn() }));
 vi.mock('@/lib/ai/listing-copy', () => ({ draftListingCopy: vi.fn() }));
 vi.mock('@/lib/events', () => ({ logEvent: vi.fn() }));
+// Ownership guard is exercised by its own tests; here it always passes.
+vi.mock('@/lib/auth/ownership', () => ({ requireOwnedDesign: vi.fn(async () => ({ id: 'd1', batchId: 'b1' })) }));
 
 import { POST } from '@/app/api/designs/[id]/draft-listing/route';
 import { fetchMasterProduct } from '@/lib/printify/master-product';
