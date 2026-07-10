@@ -14,7 +14,10 @@ export async function generateImage(opts: {
     prompt: opts.prompt,
     style: opts.style,
     substyle: opts.substyle,
-    size: opts.size ?? '2048x2048',
+    // Recraft V3 rejects 2048x2048 ("doesn't support 2048x2048 image size").
+    // 1024x1365 is the largest supported portrait size close to the 5:6
+    // shirt print aspect.
+    size: opts.size ?? '1024x1365',
     response_format: 'url',
     n: 1,
   };
