@@ -1,5 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
-import { groqJSON, GROQ_MODEL } from './groq';
+import { groqJSON, groqText, GROQ_MODEL } from './groq';
 import { logAiCall, classifyError, type AiProvider } from './log';
 
 let client: GoogleGenAI | null = null;
@@ -119,16 +119,57 @@ export async function geminiText(opts: {
   maxTokens?: number;
   model?: string;
 }): Promise<string> {
-  return withRetry(async () => {
-    const ai = getGemini();
-    const resp = await ai.models.generateContent({
-      model: opts.model ?? MODEL,
-      contents: opts.user,
-      config: {
-        systemInstruction: opts.system,
-        maxOutputTokens: opts.maxTokens ?? 4096,
-      },
+  const geminiStart = Date.now();
+  const geminiModel = opts.model ?? MODEL;
+  try {
+    const out = await withRetry(async () => {
+      const ai = getGemini();
+      const resp = await ai.models.generateContent({
+        model: geminiModel,
+        contents: opts.user,
+        config: {
+          systemInstruction: opts.system,
+          maxOutputTokens: opts.maxTokens ?? 4096,
+        },
+      });
+      return resp.text ?? '';
     });
-    return resp.text ?? '';
-  });
+    await logAiCall({
+      provider: 'gemini', model: geminiModel,
+      durationMs: Date.now() - geminiStart, ok: true, call: 'text',
+    });
+    return out;
+  } catch (err) {
+    await logAiCall({
+      provider: 'gemini', model: geminiModel,
+      durationMs: Date.now() - geminiStart, ok: false,
+      errorClass: classifyError(err), call: 'text',
+    });
+
+    // Same transient-only Groq fallback as geminiJSON — a free-tier 429 on
+    // Gemini must not kill SVG/typography generation.
+    if (process.env.GROQ_API_KEY && isTransientGeminiError(err)) {
+      const groqStart = Date.now();
+      try {
+        const out = await groqText({
+          system: opts.system,
+          user: opts.user,
+          maxTokens: opts.maxTokens,
+        });
+        await logAiCall({
+          provider: 'groq', model: GROQ_MODEL,
+          durationMs: Date.now() - groqStart, ok: true, call: 'text',
+        });
+        return out;
+      } catch (groqErr) {
+        await logAiCall({
+          provider: 'groq', model: GROQ_MODEL,
+          durationMs: Date.now() - groqStart, ok: false,
+          errorClass: classifyError(groqErr), call: 'text',
+        });
+        /* fallthrough — rethrow original Gemini error */
+      }
+    }
+    throw err;
+  }
 }
