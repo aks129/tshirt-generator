@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db/client';
-import { listings, designs } from '@/lib/db/schema';
+import { listings, designs, listingStats } from '@/lib/db/schema';
 import { getProduct } from '@/lib/printify/get-product';
 import { deletePrintifyProduct } from '@/lib/printify/delete-product';
 import { requireOwnedListing } from '@/lib/auth/ownership';
@@ -56,6 +56,9 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     }
   }
 
+  // Stats snapshots FK-reference the listing (no cascade) — clear them first
+  // or the row delete 500s for any listing the daily stats cron has touched.
+  await db.delete(listingStats).where(eq(listingStats.listingId, id));
   await db.delete(listings).where(eq(listings.id, id));
   // Reset the design to 'approved' so it can be re-published.
   await db.update(designs).set({ status: 'approved' }).where(eq(designs.id, row.designId));
