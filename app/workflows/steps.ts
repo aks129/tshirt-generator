@@ -5,6 +5,7 @@ import { expandBrief } from '@/lib/ai/brief-expander';
 import { checkSafety } from '@/lib/ai/content-safety';
 import { generateTypographySVG } from '@/lib/ai/svg-generator';
 import { rasterizeSVG } from '@/lib/images/rasterize';
+import { assertNotBlank } from '@/lib/images/ink-coverage';
 import { generateImage } from '@/lib/recraft/client';
 import { detectHasBackground, attemptWhiteBgRemoval } from '@/lib/images/bg-remove';
 import { uploadPng } from '@/lib/blob/upload';
@@ -82,6 +83,9 @@ export async function generateOneDesignStep(designId: string, concept: Concept, 
         mood: concept.mood,
       });
       pngBuffer = await rasterizeSVG(svg);
+      // A missing font makes resvg drop <text> silently → blank shirt on
+      // Etsy. Fail the design loudly instead.
+      await assertNotBlank(pngBuffer, `typography design ${designId}`);
       modelUsed = 'gemini-svg';
       costCents = GEMINI_SVG_COST_CENTS;
     } else {
