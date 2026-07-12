@@ -1,8 +1,10 @@
 import { geminiText, MODEL_CREATIVE } from './gemini';
 
+// Must exactly match the family names of the TTFs bundled in assets/fonts —
+// Vercel has no system fonts, so anything else renders as NOTHING (resvg
+// drops unresolvable <text> silently). Impact/Arial/etc. do not exist there.
 const APPROVED_FONTS = [
-  'Impact', 'Arial Black', 'Helvetica', 'Georgia',
-  'Times New Roman', 'Courier New', 'Verdana',
+  'Anton', 'Archivo Black', 'Bebas Neue', 'Oswald', 'Lora', 'Courier Prime',
 ];
 
 export async function generateTypographySVG(opts: {
