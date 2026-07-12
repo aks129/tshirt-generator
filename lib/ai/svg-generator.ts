@@ -22,7 +22,9 @@ STRICT REQUIREMENTS:
 - DO NOT use @import, @font-face, or any external resources — they will fail to load
 - Use font-family from this list ONLY: ${APPROVED_FONTS.join(', ')}
 - Use the supplied palette (no off-palette colors)
-- Compose the headline with bold visual hierarchy — split into multiple lines if more than 3 words, vary font weights/sizes, optional decorative lines or stars/asterisks
+- Compose the headline with bold visual hierarchy — split into multiple lines if more than 3 words, vary font weights/sizes
+- TEXT CONTENT: ASCII only (A–Z, a–z, 0–9, and . , ! ? & ' " - : *). NEVER use emoji, star symbols (★☆), bullets (•), checkmarks, arrows, or any non-ASCII/decorative glyph — the fonts lack those and they render as broken boxes. For decoration use only drawn <rect>/<line> shapes, never glyph characters.
+- STAY INSIDE THE CANVAS: keep ALL content within x=250..4250 and y=250..5150 (safe margins). Every <text> must use text-anchor="middle" centered near x=2250. Size each line so its full width fits the margins — for a long word, REDUCE font-size (a ~10-character word at font-size 700 already fills the width; scale down accordingly). Nothing may touch or cross the viewBox edge.
 - All XML must be VALID — escape & as &amp;, < as &lt;, > as &gt; inside text content
 - No raster <image> elements
 - Single, self-contained <svg> root element`;
@@ -53,6 +55,14 @@ export function extractAndSanitizeSVG(raw: string): string {
 
   // Drop xlink namespace declarations on font URLs that may have raw &
   svg = svg.replace(/href\s*=\s*"https?:\/\/fonts\.googleapis[^"]*"/g, 'href=""');
+
+  // Strip non-ASCII glyphs from <text> content — the bundled fonts have no
+  // emoji/dingbat/star glyphs, so any such character rasterizes as a broken
+  // "tofu" box. Keep printable ASCII (incl. escaped entities like &amp;) and
+  // whitespace; drop everything else. Applies only to text between tags.
+  svg = svg.replace(/>([^<]+)</g, (_m, text: string) =>
+    `>${text.replace(/[^\x09\x0A\x0D\x20-\x7E]/g, '')}<`,
+  );
 
   return svg;
 }
