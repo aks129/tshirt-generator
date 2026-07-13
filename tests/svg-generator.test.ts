@@ -22,4 +22,18 @@ describe('generateTypographySVG', () => {
     expect(svg).toContain('viewBox="0 0 4500 5400"');
     expect(svg).toContain('DAD JOKES ONLY');
   });
+
+  it('strips non-ASCII glyphs (emoji/stars) from text content', async () => {
+    const fakeSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4500 5400"><text x="2250" y="2700" text-anchor="middle">CAT ZONE ★😺</text><text x="2250" y="3200">* Members Only *</text></svg>`;
+    vi.mocked(geminiText).mockResolvedValue(fakeSVG);
+
+    const svg = await generateTypographySVG({
+      headline: 'Cat Zone',
+      palette: ['#111111'],
+      mood: 'bold',
+    });
+    expect(svg).not.toMatch(/[★😺]/);
+    expect(svg).toContain('CAT ZONE');
+    expect(svg).toContain('* Members Only *'); // ASCII asterisks survive
+  });
 });
