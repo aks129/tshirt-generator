@@ -28,8 +28,13 @@ export function applyDynamicPricing(
 
   return variants.map((v) => ({
     ...v,
-    // max() with master's floor prevents going below master's price when the
-    // recommendation comes in absurdly low (e.g. niche with cheap competitors).
-    price: Math.max(v.price + delta, minMasterPrice),
+    // Shift by delta (which is negative when pricing BELOW the master), then
+    // floor at basePriceCents — the intended base, already clamped to the
+    // operator's minPriceFloorCents by the caller. The lowest variant lands
+    // exactly on basePriceCents; larger sizes keep their upcharge above it.
+    // (Flooring at minMasterPrice here was a bug: it made it impossible to
+    // ever price below the master, silently pinning every listing to the
+    // master's price.)
+    price: Math.max(v.price + delta, basePriceCents),
   }));
 }
