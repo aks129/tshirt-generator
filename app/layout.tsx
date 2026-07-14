@@ -20,6 +20,11 @@ const bricolage = Bricolage_Grotesque({
 export const metadata: Metadata = {
   title: "DagsThreads Studio",
   description: "Design, review, and publish tees — from slogan to Etsy listing",
+  // Pinterest domain verification (renders <meta name="p:domain_verify" ...>).
+  // In the root layout so it's present on the public /login page too.
+  other: {
+    "p:domain_verify": "b7f266a3fc0ba17d178f898c02e275fb",
+  },
 };
 
 export default function RootLayout({
